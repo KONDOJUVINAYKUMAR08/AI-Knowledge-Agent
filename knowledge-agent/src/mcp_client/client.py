@@ -1,0 +1,210 @@
+"""
+MCP Client wrapper.
+
+Manages a subprocess running the MCP Server via stdio transport.
+Provides a clean async interface for tool discovery and invocation.
+
+Compatible with MCP SDK v2.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from typing import Any
+
+from mcp import ClientSession, StdioServerParameters, stdio_client
+from mcp.types import Tool
+
+from src.core.config import get_settings
+from src.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+class MCPClientError(Exception):
+    """Base exception for MCP client errors."""
+
+
+class ToolNotFoundError(MCPClientError):
+    """Raised when a requested tool does not exist on the server."""
+
+
+class ToolInvocationError(MCPClientError):
+    """Raised when a tool invocation fails."""
+
+
+class MCPClient:
+    """
+    Async MCP client that manages a long-lived connection to the MCP server subprocess.
+
+    The client uses stdio_client as an async context manager and must remain
+    within its scope for the entire duration of use.
+
+    Usage:
+        async with MCPClient() as client:
+            result = await client.call_tool("hello", {"name": "World"})
+    """
+
+    def __init__(self) -> None:
+        self._settings = get_settings()
+        self._session: ClientSession | None = None
+        self._connected = False
+        self._available_tools: dict[str, Tool] = {}
+        # Holds the live stdio_client context manager
+        self._stdio_cm = None
+        self._session_cm = None
+
+    @property
+    def is_connected(self) -> bool:
+        return self._connected
+
+    @property
+    def available_tools(self) -> list[Tool]:
+        return list(self._available_tools.values())
+
+    async def connect(self) -> None:
+        """Start the MCP server subprocess and establish a session."""
+        if self._connected:
+            logger.warning("mcp_client.already_connected")
+            return
+
+        cwd = str(self._get_mcp_server_cwd())
+        server_params = StdioServerParameters(
+            command=self._settings.mcp_server_python,
+            args=["-m", "src.server.main"],
+            cwd=cwd,
+        )
+
+        logger.info(
+            "mcp_client.connecting",
+            cwd=cwd,
+            python=self._settings.mcp_server_python,
+        )
+
+        try:
+            # stdio_client is an async context manager that yields (read, write) streams
+            self._stdio_cm = stdio_client(server_params)
+            read_stream, write_stream = await self._stdio_cm.__aenter__()
+
+            self._session_cm = ClientSession(read_stream, write_stream)
+            self._session = await self._session_cm.__aenter__()
+            await self._session.initialize()
+
+            await self._refresh_tools()
+            self._connected = True
+            logger.info(
+                "mcp_client.connected",
+                tool_count=len(self._available_tools),
+                tools=list(self._available_tools.keys()),
+            )
+        except Exception as exc:
+            logger.exception("mcp_client.connection_failed", error=str(exc))
+            raise MCPClientError(f"Failed to connect to MCP server: {exc}") from exc
+
+    async def disconnect(self) -> None:
+        """Terminate the MCP session and server subprocess."""
+        if not self._connected:
+            return
+
+        try:
+            if self._session_cm:
+                await self._session_cm.__aexit__(None, None, None)
+            if self._stdio_cm:
+                await self._stdio_cm.__aexit__(None, None, None)
+        except Exception as exc:
+            logger.warning("mcp_client.disconnect_error", error=str(exc))
+        finally:
+            self._session = None
+            self._session_cm = None
+            self._stdio_cm = None
+            self._connected = False
+            self._available_tools = {}
+            logger.info("mcp_client.disconnected")
+
+    async def _refresh_tools(self) -> None:
+        """Fetch and cache the list of available tools from the server."""
+        if not self._session:
+            raise MCPClientError("Not connected")
+
+        response = await self._session.list_tools()
+        self._available_tools = {tool.name: tool for tool in response.tools}
+
+    async def list_tools(self) -> list[Tool]:
+        """Return the list of available tools, refreshing from server."""
+        if not self._connected:
+            raise MCPClientError("Not connected to MCP server")
+        await self._refresh_tools()
+        return self.available_tools
+
+    async def call_tool(self, tool_name: str, arguments: dict[str, Any] | None = None) -> Any:
+        """
+        Invoke a tool on the MCP server.
+
+        Args:
+            tool_name: The registered tool name.
+            arguments: Dict of keyword arguments for the tool.
+
+        Returns:
+            The tool's result (deserialized).
+
+        Raises:
+            ToolNotFoundError: If tool is not registered.
+            ToolInvocationError: If the tool returns an error.
+        """
+        if not self._connected or not self._session:
+            raise MCPClientError("Not connected to MCP server")
+
+        if tool_name not in self._available_tools:
+            raise ToolNotFoundError(
+                f"Tool '{tool_name}' not found. Available: {list(self._available_tools.keys())}"
+            )
+
+        args = arguments or {}
+        logger.info("mcp_client.calling_tool", tool=tool_name, args=args)
+
+        try:
+            result = await asyncio.wait_for(
+                self._session.call_tool(tool_name, args),
+                timeout=self._settings.agent_tool_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            raise ToolInvocationError(
+                f"Tool '{tool_name}' timed out after {self._settings.agent_tool_timeout_seconds}s"
+            )
+        except Exception as exc:
+            logger.exception("mcp_client.tool_call_failed", tool=tool_name, error=str(exc))
+            raise ToolInvocationError(f"Tool '{tool_name}' invocation failed: {exc}") from exc
+
+        if result.isError:
+            error_msg = str(result.content)
+            logger.error("mcp_client.tool_returned_error", tool=tool_name, error=error_msg)
+            raise ToolInvocationError(f"Tool '{tool_name}' returned error: {error_msg}")
+
+        # Extract text content from MCP response
+        content = result.content
+        if content and len(content) > 0:
+            first = content[0]
+            if hasattr(first, "text"):
+                try:
+                    parsed = json.loads(first.text)
+                    logger.info("mcp_client.tool_success", tool=tool_name)
+                    return parsed
+                except (json.JSONDecodeError, TypeError):
+                    return first.text
+
+        return None
+
+    def _get_mcp_server_cwd(self):
+        """Return the working directory for the MCP server subprocess."""
+        from pathlib import Path
+        script_path = Path(self._settings.mcp_server_script_abs_path)
+        # Go up from src/server/main.py → src/server → src → mcp-server
+        return script_path.parent.parent.parent
+
+    async def __aenter__(self) -> "MCPClient":
+        await self.connect()
+        return self
+
+    async def __aexit__(self, *args: Any) -> None:
+        await self.disconnect()
