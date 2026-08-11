@@ -1,7 +1,7 @@
 """
 MCP Client wrapper.
 
-Manages a subprocess running the MCP Server via stdio transport.
+Manages a connection to the MCP Server via Streamable HTTP transport.
 Provides a clean async interface for tool discovery and invocation.
 
 Compatible with MCP SDK v2.
@@ -13,7 +13,8 @@ import asyncio
 import json
 from typing import Any
 
-from mcp import ClientSession, StdioServerParameters, stdio_client
+from mcp import ClientSession
+from mcp.client.streamable_http import streamable_http_client
 from mcp.types import Tool
 
 from src.core.config import get_settings
@@ -36,14 +37,10 @@ class ToolInvocationError(MCPClientError):
 
 class MCPClient:
     """
-    Async MCP client that manages a long-lived connection to the MCP server subprocess.
+    Async MCP client that manages a long-lived connection to the MCP server.
 
-    The client uses stdio_client as an async context manager and must remain
+    The client uses streamable_http_client as an async context manager and must remain
     within its scope for the entire duration of use.
-
-    Usage:
-        async with MCPClient() as client:
-            result = await client.call_tool("hello", {"name": "World"})
     """
 
     def __init__(self) -> None:
@@ -51,8 +48,8 @@ class MCPClient:
         self._session: ClientSession | None = None
         self._connected = False
         self._available_tools: dict[str, Tool] = {}
-        # Holds the live stdio_client context manager
-        self._stdio_cm = None
+        # Holds the live client context manager
+        self._http_cm = None
         self._session_cm = None
 
     @property
@@ -64,28 +61,20 @@ class MCPClient:
         return list(self._available_tools.values())
 
     async def connect(self) -> None:
-        """Start the MCP server subprocess and establish a session."""
+        """Start the MCP session over Streamable HTTP."""
         if self._connected:
             logger.warning("mcp_client.already_connected")
             return
 
-        cwd = str(self._get_mcp_server_cwd())
-        server_params = StdioServerParameters(
-            command=self._settings.mcp_server_python,
-            args=["-m", "src.server.main"],
-            cwd=cwd,
-        )
-
+        server_url = self._settings.mcp_server_url
         logger.info(
             "mcp_client.connecting",
-            cwd=cwd,
-            python=self._settings.mcp_server_python,
+            url=server_url,
         )
 
         try:
-            # stdio_client is an async context manager that yields (read, write) streams
-            self._stdio_cm = stdio_client(server_params)
-            read_stream, write_stream = await self._stdio_cm.__aenter__()
+            self._http_cm = streamable_http_client(url=server_url)
+            read_stream, write_stream = await self._http_cm.__aenter__()
 
             self._session_cm = ClientSession(read_stream, write_stream)
             self._session = await self._session_cm.__aenter__()
@@ -103,21 +92,21 @@ class MCPClient:
             raise MCPClientError(f"Failed to connect to MCP server: {exc}") from exc
 
     async def disconnect(self) -> None:
-        """Terminate the MCP session and server subprocess."""
+        """Terminate the MCP session."""
         if not self._connected:
             return
 
         try:
             if self._session_cm:
                 await self._session_cm.__aexit__(None, None, None)
-            if self._stdio_cm:
-                await self._stdio_cm.__aexit__(None, None, None)
+            if self._http_cm:
+                await self._http_cm.__aexit__(None, None, None)
         except Exception as exc:
             logger.warning("mcp_client.disconnect_error", error=str(exc))
         finally:
             self._session = None
             self._session_cm = None
-            self._stdio_cm = None
+            self._http_cm = None
             self._connected = False
             self._available_tools = {}
             logger.info("mcp_client.disconnected")
@@ -194,13 +183,6 @@ class MCPClient:
                     return first.text
 
         return None
-
-    def _get_mcp_server_cwd(self):
-        """Return the working directory for the MCP server subprocess."""
-        from pathlib import Path
-        script_path = Path(self._settings.mcp_server_script_abs_path)
-        # Go up from src/server/main.py → src/server → src → mcp-server
-        return script_path.parent.parent.parent
 
     async def __aenter__(self) -> "MCPClient":
         await self.connect()

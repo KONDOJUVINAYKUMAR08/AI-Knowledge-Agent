@@ -27,10 +27,14 @@ class Settings(BaseSettings):
     )
 
     # MCP Server
-    mcp_server_script_path: str = Field(
-        default="../mcp-server/src/server/main.py"
+    mcp_server_url: str = Field(
+        default="http://mcp-server:8001/mcp"
     )
-    mcp_server_python: str = Field(default="python")
+
+    # LLM
+    llm_provider: str = Field(default="openai")
+    llm_model: str = Field(default="gpt-4o-mini")
+    openai_api_key: str | None = Field(default=None)
 
     # Agent
     agent_max_tool_retries: int = Field(default=3)
@@ -40,13 +44,7 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO")
     log_format: str = Field(default="console")
 
-    @property
-    def mcp_server_script_abs_path(self) -> str:
-        """Resolve the MCP server script path to absolute."""
-        path = Path(self.mcp_server_script_path)
-        if not path.is_absolute():
-            path = (Path(__file__).parent.parent.parent / path).resolve()
-        return str(path)
+
 
 
 @lru_cache(maxsize=1)

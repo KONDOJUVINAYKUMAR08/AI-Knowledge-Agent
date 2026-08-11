@@ -23,12 +23,8 @@ class ToolInfo(BaseModel):
 class QueryResponse(BaseModel):
     """Agent query response."""
     success: bool
-    query: str
-    intent: str
-    tool_name: str | None
-    tool_arguments: dict[str, Any]
-    result: Any
     error: str | None = None
+    structured_response: dict[str, Any] | None = None
     timestamp: str
     processing_ms: float
 

@@ -159,15 +159,11 @@ async def query(request: QueryRequest) -> QueryResponse:
     response = await agent.process_query(request.query)
 
     return QueryResponse(
-        success=response.success,
-        query=request.query,
-        intent=response.intent.value,
-        tool_name=response.tool_name,
-        tool_arguments=response.tool_arguments,
-        result=response.result,
-        error=response.error,
-        timestamp=response.timestamp,
-        processing_ms=response.processing_ms,
+        success=response["success"],
+        error=response["error"],
+        structured_response=response["structured_response"],
+        timestamp=response["timestamp"],
+        processing_ms=response["processing_ms"],
     )
 
 
@@ -230,15 +226,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     json.dumps({
                         "type": "response",
                         "payload": {
-                            "success": response.success,
-                            "query": query_text,
-                            "intent": response.intent.value,
-                            "tool_name": response.tool_name,
-                            "tool_arguments": response.tool_arguments,
-                            "result": response.result,
-                            "error": response.error,
-                            "timestamp": response.timestamp,
-                            "processing_ms": response.processing_ms,
+                            "success": response["success"],
+                            "error": response["error"],
+                            "structured_response": response["structured_response"],
+                            "timestamp": response["timestamp"],
+                            "processing_ms": response["processing_ms"],
                         },
                     })
                 )

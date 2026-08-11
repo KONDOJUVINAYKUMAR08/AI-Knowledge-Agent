@@ -1,293 +1,211 @@
 """
-Knowledge Agent — rule-based dispatcher.
+Knowledge Agent — LangGraph implementation.
 
-Parses user queries and maps them to the appropriate MCP tool.
-Designed to be replaced or extended with an LLM dispatcher later.
-
-Architecture: Intent → Tool → MCP Client → Result
+Uses a deterministic state graph:
+START -> Understand Request -> Identify Ticket -> Retrieve Context -> LLM Analysis -> Generate Structured Response -> END
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
-from typing import Any
+from typing import Any, Literal, TypedDict
 
+from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_openai import ChatOpenAI
+from langgraph.graph import StateGraph, START, END
+from pydantic import BaseModel, Field
+
+from src.core.config import get_settings
 from src.core.logging import get_logger
 from src.mcp_client.client import MCPClient, MCPClientError
 
 logger = get_logger(__name__)
+settings = get_settings()
 
-
-class IntentType(str, Enum):
-    """Recognized intent categories."""
-    GREETING = "greeting"
-    GET_TICKET = "get_ticket"
-    SEARCH_TICKETS = "search_tickets"
-    GET_PROJECT = "get_project"
-    GET_TIME = "get_time"
-    LIST_TOOLS = "list_tools"
-    UNKNOWN = "unknown"
-
-
-@dataclass
-class ParsedIntent:
-    """Result of intent parsing."""
-    intent: IntentType
-    tool_name: str | None
-    arguments: dict[str, Any] = field(default_factory=dict)
-    confidence: float = 1.0
-    raw_query: str = ""
-
-
-@dataclass
-class AgentResponse:
-    """Structured response from the agent."""
-    success: bool
-    intent: IntentType
-    tool_name: str | None
-    tool_arguments: dict[str, Any]
-    result: Any
-    error: str | None = None
-    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
-    processing_ms: float = 0.0
-
-
-# Compiled regex patterns for intent matching
 _TICKET_ID_PATTERN = re.compile(r"\b([A-Z]+-\d+)\b", re.IGNORECASE)
-_GREETING_PATTERN = re.compile(r"\b(hello|hi|hey|greet|test|ping|check)\b", re.IGNORECASE)
-_TIME_PATTERN = re.compile(r"\b(time|date|now|current|today|clock|when)\b", re.IGNORECASE)
-_PROJECT_PATTERN = re.compile(r"\b(project|overview|summary|team|stats|statistics|board)\b", re.IGNORECASE)
-_SEARCH_PATTERN = re.compile(r"\b(search|find|look|list|query|filter|get all)\b", re.IGNORECASE)
-_TOOL_LIST_PATTERN = re.compile(r"\b(tools|capabilities|what can you do|help|available)\b", re.IGNORECASE)
 
 
-class IntentParser:
-    """
-    Rule-based intent parser.
+class AgentResponseSchema(BaseModel):
+    """Structured response required from the LLM."""
+    ticket_summary: str = Field(description="Summary of the ticket")
+    what_we_know: str = Field(description="Bullet points of known facts about the ticket")
+    similar_historical_tickets: str = Field(description="Details of similar historical tickets")
+    previous_resolution: str = Field(description="How similar tickets were previously resolved")
+    recommended_investigation: str = Field(description="Suggested steps to investigate")
+    missing_information: str = Field(description="Information that is missing from the ticket")
+    sources: list[str] = Field(description="List of data sources used")
 
-    Parses free-form user queries into structured intents.
-    Replace this class with an LLM-based parser when ready.
-    """
 
-    def parse(self, query: str) -> ParsedIntent:
-        """Parse user query into a structured intent."""
-        query_stripped = query.strip()
-
-        # Priority 1: Explicit ticket ID (e.g., "PROJ-1001")
-        ticket_match = _TICKET_ID_PATTERN.search(query_stripped)
-        if ticket_match:
-            ticket_id = ticket_match.group(1).upper()
-            return ParsedIntent(
-                intent=IntentType.GET_TICKET,
-                tool_name="get_mock_ticket",
-                arguments={"ticket_id": ticket_id},
-                raw_query=query_stripped,
-            )
-
-        # Priority 2: Project overview (before search to avoid false positive)
-        if _PROJECT_PATTERN.search(query_stripped):
-            return ParsedIntent(
-                intent=IntentType.GET_PROJECT,
-                tool_name="get_mock_project",
-                arguments={},
-                raw_query=query_stripped,
-            )
-
-        # Priority 3: Search intent
-        if _SEARCH_PATTERN.search(query_stripped):
-            args = self._extract_search_args(query_stripped)
-            return ParsedIntent(
-                intent=IntentType.SEARCH_TICKETS,
-                tool_name="search_mock_tickets",
-                arguments=args,
-                raw_query=query_stripped,
-            )
-
-        # Priority 4: Time/date query
-        if _TIME_PATTERN.search(query_stripped):
-            return ParsedIntent(
-                intent=IntentType.GET_TIME,
-                tool_name="current_time",
-                arguments={},
-                raw_query=query_stripped,
-            )
-
-        # Priority 5: Tool listing
-        if _TOOL_LIST_PATTERN.search(query_stripped):
-            return ParsedIntent(
-                intent=IntentType.LIST_TOOLS,
-                tool_name=None,
-                arguments={},
-                raw_query=query_stripped,
-            )
-
-        # Priority 6: Greeting / connectivity test
-        if _GREETING_PATTERN.search(query_stripped) or len(query_stripped) <= 10:
-            name = self._extract_name(query_stripped) or "User"
-            return ParsedIntent(
-                intent=IntentType.GREETING,
-                tool_name="hello",
-                arguments={"name": name},
-                raw_query=query_stripped,
-            )
-
-        # Fallback: Unknown intent — still try hello
-        return ParsedIntent(
-            intent=IntentType.UNKNOWN,
-            tool_name="hello",
-            arguments={"name": "User"},
-            confidence=0.3,
-            raw_query=query_stripped,
-        )
-
-    def _extract_search_args(self, query: str) -> dict[str, str]:
-        """Extract search filter parameters from the query text."""
-        args: dict[str, str] = {}
-
-        # Status extraction
-        status_map = {
-            "open": "Open",
-            "in progress": "In Progress",
-            "done": "Done",
-            "backlog": "Backlog",
-            "review": "In Review",
-            "closed": "Done",
-        }
-        for keyword, status in status_map.items():
-            if keyword in query.lower():
-                args["status"] = status
-                break
-
-        # Priority extraction
-        for priority in ["critical", "high", "medium", "low"]:
-            if priority in query.lower():
-                args["priority"] = priority.capitalize()
-                break
-
-        # Label/component extraction (simple)
-        for label in ["security", "authentication", "database", "frontend", "backend", "mobile", "performance"]:
-            if label in query.lower():
-                args["label"] = label
-                break
-
-        # Generic keyword search (use entire query if no specific filters)
-        if not args:
-            args["query"] = query
-
-        return args
-
-    def _extract_name(self, query: str) -> str | None:
-        """Try to extract a name from a greeting."""
-        # Match patterns like "hello John", "hi, I'm Alice"
-        match = re.search(r"(?:hello|hi|hey)[,\s]+(?:i'?m\s+)?([A-Z][a-z]+)", query, re.IGNORECASE)
-        if match:
-            return match.group(1)
-        return None
+class AgentState(TypedDict):
+    """The state dictionary for the LangGraph workflow."""
+    query: str
+    ticket_id: str | None
+    ticket_data: dict[str, Any] | None
+    similar_tickets_data: list[dict[str, Any]] | None
+    error: str | None
+    structured_response: dict[str, Any] | None
+    processing_ms: float
+    start_time: float
 
 
 class KnowledgeAgent:
-    """
-    Rule-based Knowledge Agent.
-
-    Orchestrates intent parsing → MCP tool invocation → response formatting.
-    The MCP Client is injected for testability (dependency injection pattern).
-    """
+    """LangGraph-based Knowledge Agent."""
 
     def __init__(self, mcp_client: MCPClient) -> None:
         self._client = mcp_client
-        self._parser = IntentParser()
+        
+        # Initialize LLM with structured output
+        llm = ChatOpenAI(
+            model=settings.llm_model,
+            api_key=settings.openai_api_key,
+            temperature=0,
+        )
+        self._llm = llm.with_structured_output(AgentResponseSchema)
+        
+        # Build LangGraph
+        builder = StateGraph(AgentState)
+        builder.add_node("understand_request", self._node_understand_request)
+        builder.add_node("retrieve_context", self._node_retrieve_context)
+        builder.add_node("analyze_and_generate", self._node_analyze_and_generate)
+        
+        builder.add_edge(START, "understand_request")
+        
+        # Conditional edge: if ticket found, retrieve context. Else skip to generation (with error).
+        builder.add_conditional_edges(
+            "understand_request",
+            self._route_after_understanding,
+            {
+                "retrieve": "retrieve_context",
+                "generate": "analyze_and_generate"
+            }
+        )
+        
+        builder.add_edge("retrieve_context", "analyze_and_generate")
+        builder.add_edge("analyze_and_generate", END)
+        
+        self._graph = builder.compile()
         logger.info("knowledge_agent.initialized")
 
-    async def process_query(self, query: str) -> AgentResponse:
-        """
-        Process a user query end-to-end.
+    def _node_understand_request(self, state: AgentState) -> dict:
+        """Parse query to extract ticket ID deterministically."""
+        query = state["query"]
+        match = _TICKET_ID_PATTERN.search(query)
+        ticket_id = match.group(1).upper() if match else None
+        
+        if not ticket_id:
+            return {"error": "No valid ticket ID found in query."}
+            
+        return {"ticket_id": ticket_id}
 
-        1. Parse intent
-        2. Invoke MCP tool
-        3. Return structured response
-        """
-        start_time = datetime.now(UTC)
-        intent = self._parser.parse(query)
+    def _route_after_understanding(self, state: AgentState) -> Literal["retrieve", "generate"]:
+        if state.get("error") or not state.get("ticket_id"):
+            return "generate"
+        return "retrieve"
 
-        logger.info(
-            "agent.processing_query",
-            intent=intent.intent.value,
-            tool=intent.tool_name,
-            args=intent.arguments,
-            confidence=intent.confidence,
-        )
-
-        # Special case: list available tools
-        if intent.intent == IntentType.LIST_TOOLS:
-            tools = await self._client.list_tools()
-            result = {
-                "tools": [
-                    {
-                        "name": t.name,
-                        "description": t.description,
-                        "parameters": t.inputSchema,
-                    }
-                    for t in tools
-                ],
-                "count": len(tools),
-            }
-            return self._build_response(
-                success=True,
-                intent=intent,
-                result=result,
-                start_time=start_time,
-            )
-
-        # Regular tool invocation
-        if not intent.tool_name:
-            return self._build_response(
-                success=False,
-                intent=intent,
-                result=None,
-                error="Could not determine which tool to invoke for your query.",
-                start_time=start_time,
-            )
-
+    async def _node_retrieve_context(self, state: AgentState) -> dict:
+        """Retrieve ticket and similar tickets via MCP."""
+        ticket_id = state["ticket_id"]
+        
         try:
-            result = await self._client.call_tool(intent.tool_name, intent.arguments)
-            return self._build_response(
-                success=True,
-                intent=intent,
-                result=result,
-                start_time=start_time,
-            )
+            # 1. Get ticket
+            ticket_resp = await self._client.call_tool("get_ticket", {"ticket_id": ticket_id})
+            if not ticket_resp or "error" in ticket_resp:
+                return {"error": ticket_resp.get("error", "Failed to retrieve ticket")}
+                
+            ticket_data = ticket_resp.get("ticket")
+            
+            # 2. Get similar tickets
+            similar_resp = await self._client.call_tool("find_similar_tickets", {"ticket_id": ticket_id})
+            similar_tickets = similar_resp.get("tickets", []) if similar_resp else []
+            
+            return {
+                "ticket_data": ticket_data,
+                "similar_tickets_data": similar_tickets
+            }
+            
         except MCPClientError as exc:
-            logger.error("agent.tool_invocation_error", tool=intent.tool_name, error=str(exc))
-            return self._build_response(
-                success=False,
-                intent=intent,
-                result=None,
-                error=str(exc),
-                start_time=start_time,
-            )
+            logger.error("agent.mcp_error", error=str(exc))
+            return {"error": f"MCP communication failed: {exc}"}
+        except Exception as exc:
+            logger.error("agent.unexpected_error", error=str(exc))
+            return {"error": f"Unexpected error during retrieval: {exc}"}
 
-    def _build_response(
-        self,
-        success: bool,
-        intent: ParsedIntent,
-        result: Any,
-        start_time: datetime,
-        error: str | None = None,
-    ) -> AgentResponse:
-        """Build a structured agent response."""
-        now = datetime.now(UTC)
-        elapsed_ms = (now - start_time).total_seconds() * 1000
+    async def _node_analyze_and_generate(self, state: AgentState) -> dict:
+        """Use LLM to analyze context and generate the structured response."""
+        if state.get("error") and not state.get("ticket_data"):
+            # We failed to get data. Generate a minimal response.
+            return {
+                "structured_response": {
+                    "ticket_summary": "Error",
+                    "what_we_know": state["error"],
+                    "similar_historical_tickets": "N/A",
+                    "previous_resolution": "N/A",
+                    "recommended_investigation": "Please provide a valid ticket ID or check connectivity.",
+                    "missing_information": "N/A",
+                    "sources": ["System"]
+                }
+            }
+            
+        # Build prompt
+        ticket = state.get("ticket_data", {})
+        similar = state.get("similar_tickets_data", [])
+        
+        system_msg = SystemMessage(content=(
+            "You are an AI Knowledge Agent assisting with a support ticket. "
+            "You have retrieved the current ticket and a list of similar historical tickets. "
+            "Your task is to analyze these and output a structured response. "
+            "Never invent facts about the ticket or historical tickets. "
+            "Clearly distinguish between retrieved facts, historical data, and your own AI-generated suggested investigation steps."
+        ))
+        
+        context = f"CURRENT TICKET:\n{ticket}\n\nSIMILAR HISTORICAL TICKETS:\n{similar}"
+        user_msg = HumanMessage(content=f"User Query: {state['query']}\n\nContext:\n{context}")
+        
+        try:
+            response_obj: AgentResponseSchema = await self._llm.ainvoke([system_msg, user_msg])
+            return {"structured_response": response_obj.model_dump()}
+        except Exception as exc:
+            logger.error("agent.llm_error", error=str(exc))
+            return {
+                "structured_response": {
+                    "ticket_summary": "Error",
+                    "what_we_know": "LLM generation failed.",
+                    "similar_historical_tickets": "N/A",
+                    "previous_resolution": "N/A",
+                    "recommended_investigation": str(exc),
+                    "missing_information": "N/A",
+                    "sources": ["System"]
+                }
+            }
 
-        return AgentResponse(
-            success=success,
-            intent=intent.intent,
-            tool_name=intent.tool_name,
-            tool_arguments=intent.arguments,
-            result=result,
-            error=error,
-            timestamp=now.isoformat(),
-            processing_ms=round(elapsed_ms, 2),
+    async def process_query(self, query: str) -> dict[str, Any]:
+        """Process a query end-to-end via LangGraph."""
+        start_time = datetime.now(UTC)
+        start_ms = start_time.timestamp() * 1000
+        
+        initial_state = AgentState(
+            query=query,
+            ticket_id=None,
+            ticket_data=None,
+            similar_tickets_data=None,
+            error=None,
+            structured_response=None,
+            processing_ms=0.0,
+            start_time=start_ms
         )
+        
+        final_state = await self._graph.ainvoke(initial_state)
+        
+        now = datetime.now(UTC)
+        elapsed_ms = (now.timestamp() * 1000) - start_ms
+        
+        # Format the response compatible with the previous API shape if needed, 
+        # or just return the structured response directly.
+        return {
+            "success": final_state.get("error") is None,
+            "error": final_state.get("error"),
+            "structured_response": final_state.get("structured_response"),
+            "timestamp": now.isoformat(),
+            "processing_ms": round(elapsed_ms, 2)
+        }
