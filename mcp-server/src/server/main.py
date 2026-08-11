@@ -2,11 +2,12 @@
 MCP Server entry point.
 
 Initializes the MCPServer, registers all tool modules,
-and starts listening on stdio transport.
+and starts listening on Streamable HTTP transport.
 """
 
-import asyncio
 import sys
+import uvicorn
+from starlette.applications import Starlette
 
 from mcp.server.mcpserver import MCPServer
 
@@ -44,23 +45,14 @@ def create_server() -> MCPServer:
 # Module-level server instance
 mcp = create_server()
 
-
-async def run_async() -> None:
-    """Run the MCP server using stdio transport."""
-    logger.info("mcp_server.starting", transport="stdio")
-    await mcp.run_stdio_async()
+# The mcp>=1.0.0 (or v2.0.0) SDK natively supports Streamable HTTP for network transport.
+app = mcp.streamable_http_app(streamable_http_path="/mcp")
 
 
 def main() -> None:
     """Sync entry point for the MCP server."""
-    try:
-        asyncio.run(run_async())
-    except KeyboardInterrupt:
-        logger.info("mcp_server.shutdown", reason="KeyboardInterrupt")
-        sys.exit(0)
-    except Exception as exc:
-        logger.exception("mcp_server.fatal_error", error=str(exc))
-        sys.exit(1)
+    logger.info("mcp_server.starting", transport="streamable_http", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8001, log_level="info")
 
 
 if __name__ == "__main__":
