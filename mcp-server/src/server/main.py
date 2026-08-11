@@ -46,7 +46,7 @@ def create_server() -> MCPServer:
 mcp = create_server()
 
 # The mcp>=1.0.0 (or v2.0.0) SDK natively supports Streamable HTTP for network transport.
-app = mcp.streamable_http_app(streamable_http_path="/mcp")
+app = mcp.streamable_http_app(streamable_http_path="/mcp", host="*")
 
 
 def main() -> None:
