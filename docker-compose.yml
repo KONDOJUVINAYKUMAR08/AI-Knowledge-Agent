@@ -23,6 +23,7 @@ services:
       - API_PORT=8000
       - LOG_LEVEL=INFO
       - LOG_FORMAT=json
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       - mcp-server
     restart: unless-stopped
