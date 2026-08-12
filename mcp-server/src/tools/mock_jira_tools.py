@@ -180,6 +180,44 @@ _MOCK_TICKETS = {
         "components": ["Mobile App"],
         "created": (datetime.now(UTC) - timedelta(days=7)).isoformat(),
     },
+    "PROJ-908": {
+        "id": "9008", "key": "PROJ-908",
+        "summary": "Database connection pool exhaustion during backup",
+        "description": "Production database connection pool exhaustion timeout when running pg_dump.",
+        "status": {"name": "Done", "category": "done"},
+        "priority": {"name": "Critical"},
+        "issue_type": {"name": "Bug"},
+        "project": {"key": "PROJ", "name": "Platform Engineering"},
+        "labels": ["production", "database", "incident"],
+        "components": ["Database", "Backend API"],
+        "service": "postgres-cluster", "environment": "prod",
+        "resolution": "Increased pool_size and excluded backup connections.",
+        "created": (datetime.now(UTC) - timedelta(days=60)).isoformat(),
+    },
+    "PROJ-909": {
+        "id": "9009", "key": "PROJ-909",
+        "summary": "Please help with this issue when you can",
+        "description": "I need help with this. Could you please look at it when you have time?",
+        "status": {"name": "Done", "category": "done"},
+        "priority": {"name": "Low"},
+        "issue_type": {"name": "Bug"},
+        "project": {"key": "PROJ", "name": "Platform Engineering"},
+        "labels": ["help"],
+        "components": ["Unknown"],
+        "created": (datetime.now(UTC) - timedelta(days=50)).isoformat(),
+    },
+    "PROJ-910": {
+        "id": "9010", "key": "PROJ-910",
+        "summary": "Frontend performance degradation",
+        "description": "The UI is slow.",
+        "status": {"name": "Done", "category": "done"},
+        "priority": {"name": "High"},
+        "issue_type": {"name": "Bug"},
+        "project": {"key": "PROJ", "name": "Platform Engineering"},
+        "labels": ["production", "database", "performance", "incident"],
+        "components": ["Frontend"],
+        "created": (datetime.now(UTC) - timedelta(days=40)).isoformat(),
+    },
 }
 
 def register_mock_jira_tools(mcp: MCPServer) -> None:
@@ -224,13 +262,20 @@ def register_mock_jira_tools(mcp: MCPServer) -> None:
         
         def extract_words(text):
             if not text: return set()
-            words = re.findall(r'\\b\\w+\\b', text.lower())
-            stop_words = {"the", "is", "at", "which", "on", "and", "a", "an", "to", "in", "of", "for", "with", "from"}
+            words = re.findall(r'\b\w+\b', text.lower())
+            stop_words = {
+                "the", "is", "at", "which", "on", "and", "a", "an", "to", "in", 
+                "of", "for", "with", "from", "this", "that", "please", "help", 
+                "when", "how", "can", "could", "need", "wants", "it", "we", "they",
+                "are", "be", "have", "has", "do", "does", "did", "but", "by", "or",
+                "as", "if", "what", "where", "why", "about", "there", "their", "you", "your"
+            }
             return set(w for w in words if w not in stop_words and len(w) > 2)
 
-        target_words = extract_words(target.get("summary", "")) | extract_words(target.get("description", ""))
-        target_labels = set(target.get("labels", []))
-        target_components = set(target.get("components", []))
+        target_summary_words = extract_words(target.get("summary", ""))
+        target_desc_words = extract_words(target.get("description", ""))
+        target_labels = set(l.lower() for l in target.get("labels", []))
+        target_components = set(c.lower() for c in target.get("components", []))
         target_service = target.get("service")
         
         scores = []
@@ -239,22 +284,33 @@ def register_mock_jira_tools(mcp: MCPServer) -> None:
                 continue
                 
             score = 0
-            t_words = extract_words(t.get("summary", "")) | extract_words(t.get("description", ""))
-            score += len(target_words & t_words) * 1
             
-            t_labels = set(t.get("labels", []))
-            score += len(target_labels & t_labels) * 3
+            # Summary match (Weight: 3)
+            t_summary_words = extract_words(t.get("summary", ""))
+            score += len(target_summary_words & t_summary_words) * 3
             
-            t_comps = set(t.get("components", []))
-            score += len(target_components & t_comps) * 3
+            # Description match (Weight: 1)
+            t_desc_words = extract_words(t.get("description", ""))
+            score += len(target_desc_words & t_desc_words) * 1
             
+            # Labels match (Weight: 2)
+            t_labels = set(l.lower() for l in t.get("labels", []))
+            score += len(target_labels & t_labels) * 2
+            
+            # Components match (Weight: 4)
+            t_comps = set(c.lower() for c in t.get("components", []))
+            score += len(target_components & t_comps) * 4
+            
+            # Service match (Weight: 5)
             if target_service and target_service == t.get("service"):
                 score += 5
                 
             if score > 0:
-                scores.append({"ticket": t, "score": score})
+                scores.append({"ticket": t, "score": score, "key": key})
                 
-        scores.sort(key=lambda x: x["score"], reverse=True)
+        # Deterministic sorting: by score descending, then by key ascending
+        scores.sort(key=lambda x: (-x["score"], x["key"]))
+        
         top_similar = [s["ticket"] for s in scores[:3]]
         
         return {"tickets": top_similar, "source": "mock"}
