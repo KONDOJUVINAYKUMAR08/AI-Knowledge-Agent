@@ -155,10 +155,41 @@ Structured Knowledge Response
 - **Acceptance Criteria**: `find_similar_tickets` successfully returns highly relevant Mock Jira tickets deterministically.
 - **Commit hash**: Will be the HEAD of `test-phase8` when merged to main.
 
-## 7. Phase 9–14
+## 7. Phase 9 — COMPLETE
 
-- **Phase 9 — NEXT / NOT STARTED**: FastAPI backend integration (REST API schemas).
-- **Phase 10 — NOT STARTED**: React frontend integration (connect UI to FastAPI, display structured response).
+**Phase 9: FastAPI Backend Integration**
+- **Objective**: Expose the existing LangGraph Knowledge Agent functionality through a stable REST API, handling errors safely without exposing sensitive internals.
+- **Implementation Details**:
+  - Validated the existing FastAPI routing (`/query`, `/health`, `/tools`, `/ws`) against Phase 9 requirements.
+  - Implemented a custom `RequestValidationError` handler to safely return `422 Unprocessable Entity` without leaking request internals.
+  - Implemented a global `Exception` handler to intercept unexpected backend/agent failures and return a sanitized `500 Internal Server Error`, ensuring no API keys or stack traces are ever exposed to the client.
+  - Created a robust API test suite covering all endpoints, edge cases (missing/invalid payloads), and internal error propagation using FastAPI's `TestClient`.
+- **Files Changed**:
+  - `knowledge-agent/src/api/main.py`
+  - `knowledge-agent/tests/test_api.py` (New file)
+- **Technical Decisions**:
+  - Maintained the existing Docker Compose, MCP Streamable HTTP, and LangGraph workflow without introducing new architectural layers.
+  - Forced `raise_server_exceptions=False` in `TestClient` to strictly test the 500 error handler output schema.
+- **Tests Executed**:
+  - `test_health_check`
+  - `test_list_tools`
+  - `test_query_valid`
+  - `test_query_missing_payload`
+  - `test_query_invalid_payload`
+  - `test_query_internal_error_safe`
+  - `test_websocket_flow`
+- **Test Results**: All 24 tests across the `knowledge-agent` suite passed (100% success).
+- **Docker/EC2/SSM Validation**:
+  - Pushed to EC2, rebuilt Docker Compose, and executed API `curl` commands.
+  - `/health` correctly returned `status: healthy` and listed MCP tools.
+  - `PROJ-1002` regression succeeded, returning the structured knowledge response containing deterministic matching from Phase 8.
+  - Simulated a bad request which correctly returned a safe 422 JSON validation error.
+- **Security Scan Result**: Passed. No `.env`, secrets, or temporary SSM artifacts were committed.
+- **Commit hash**: Will be the HEAD of `test-phase9` when merged to main.
+
+## 8. Phase 10–14
+
+- **Phase 10 — NEXT / NOT STARTED**: React frontend integration (connect UI to FastAPI, display structured response).
 - **Phase 11 — NOT STARTED**: End-to-end application integration (CORS, network verification).
 - **Phase 12 — NOT STARTED**: Security, validation, error handling, structured logging.
 - **Phase 13 — NOT STARTED**: Testing and reliability (increase pytest/vitest coverage).
