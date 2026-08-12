@@ -20,21 +20,20 @@ def mock_mcp_client():
 
 @pytest.fixture
 def agent(mock_mcp_client, monkeypatch):
-    # Mock ChatOpenAI to avoid real API calls
+    # Mock LLM and structured output
     mock_llm = MagicMock()
     mock_llm.ainvoke = AsyncMock()
     
-    # We patch ChatOpenAI in the agent module
+    # We patch create_llm in the agent module
     import src.agent.agent as agent_module
     
-    class FakeChatOpenAI:
-        def __init__(self, *args, **kwargs):
-            self.model = kwargs.get("model")
+    def fake_create_llm(settings):
+        # Return an object that has with_structured_output
+        fake_llm = MagicMock()
+        fake_llm.with_structured_output = lambda schema: mock_llm
+        return fake_llm
             
-        def with_structured_output(self, schema):
-            return mock_llm
-            
-    monkeypatch.setattr(agent_module, "ChatOpenAI", FakeChatOpenAI)
+    monkeypatch.setattr(agent_module, "create_llm", fake_create_llm)
     
     ag = KnowledgeAgent(mock_mcp_client)
     ag._llm = mock_llm  # Ensure our mock is used
@@ -90,14 +89,26 @@ async def test_process_query_invalid_ticket(agent, mock_mcp_client):
 
 
 @pytest.mark.asyncio
+async def test_process_query_tool_failure(agent, mock_mcp_client):
+    # MCP tool logic error
+    from src.mcp_client.client import ToolInvocationError
+    mock_mcp_client.call_tool.side_effect = ToolInvocationError("Tool returned error: Not found")
+    
+    result = await agent.process_query("Tell me about PROJ-1002")
+    
+    assert result["success"] is False
+    assert "Tool execution failed" in result["error"]
+
+
+@pytest.mark.asyncio
 async def test_process_query_mcp_failure(agent, mock_mcp_client):
-    # MCP throws error
+    # MCP transport error
     mock_mcp_client.call_tool.side_effect = MCPClientError("Connection refused")
     
     result = await agent.process_query("Tell me about PROJ-1002")
     
     assert result["success"] is False
-    assert "MCP communication failed" in result["error"]
+    assert "MCP communication failed (Transport/Session)" in result["error"]
 
 
 @pytest.mark.asyncio

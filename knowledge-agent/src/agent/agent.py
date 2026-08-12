@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from src.core.config import get_settings
 from src.core.logging import get_logger
-from src.mcp_client.client import MCPClient, MCPClientError
+from src.mcp_client.client import MCPClient, MCPClientError, ToolInvocationError
 from src.agent.llm_factory import create_llm
 
 logger = get_logger(__name__)
@@ -120,9 +120,12 @@ class KnowledgeAgent:
                 "similar_tickets_data": similar_tickets
             }
             
+        except ToolInvocationError as exc:
+            logger.error("agent.tool_error", error=str(exc))
+            return {"error": f"Tool execution failed: {exc}"}
         except MCPClientError as exc:
-            logger.error("agent.mcp_error", error=str(exc))
-            return {"error": f"MCP communication failed: {exc}"}
+            logger.error("agent.mcp_transport_error", error=str(exc))
+            return {"error": f"MCP communication failed (Transport/Session): {exc}"}
         except Exception as exc:
             logger.error("agent.unexpected_error", error=str(exc))
             return {"error": f"Unexpected error during retrieval: {exc}"}

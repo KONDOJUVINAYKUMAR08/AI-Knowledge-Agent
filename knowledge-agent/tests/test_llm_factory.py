@@ -3,7 +3,7 @@ from unittest.mock import patch
 from src.agent.llm_factory import create_llm
 from src.core.config import Settings
 
-@patch("src.agent.llm_factory.ChatOpenAI")
+@patch("langchain_openai.ChatOpenAI")
 def test_create_llm_openai_success(mock_openai):
     settings = Settings(llm_provider="openai", llm_model="gpt-4o-mini", openai_api_key="sk-test", google_api_key=None)
     
@@ -12,7 +12,7 @@ def test_create_llm_openai_success(mock_openai):
     assert llm is not None
     mock_openai.assert_called_once_with(model="gpt-4o-mini", api_key="sk-test", temperature=0)
 
-@patch("src.agent.llm_factory.ChatGoogleGenerativeAI")
+@patch("langchain_google_genai.ChatGoogleGenerativeAI")
 def test_create_llm_gemini_success(mock_gemini):
     settings = Settings(llm_provider="gemini", llm_model="gemini-3.5-flash", google_api_key="AIza-test", openai_api_key=None)
     
