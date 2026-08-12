@@ -129,33 +129,35 @@ Structured Knowledge Response
 - **Working tree is clean**: Yes
 - **Origin/main synchronized**: Yes
 
-## 6. Phase 8
-
-STATUS: NEXT / NOT STARTED
+## 6. Phase 8 — COMPLETE
 
 **Phase 8: Historical/similar-ticket retrieval refinement**
 - **Objective**: Improve the Mock Jira deterministic retrieval logic for finding related issues.
-- **Tasks**:
-  - Expand keywords
-  - Improve summary matching
-  - Improve component-based matching
-  - Improve Mock Jira dataset where required
-  - Add unit tests for deterministic matching
-- **Files/components expected**:
+- **Algorithm Changes**:
+  - Filtered generic stop-words without removing technical terms (e.g. `timeout`, `bug`, `error` retained).
+  - Adjusted retrieval weights: Service=5, Components=4, Summary=3, Labels=2, Description=1.
+  - Implemented stable secondary/tertiary sorts by score and ticket key to ensure 100% deterministic ordering.
+- **Dataset Changes**:
+  - Added test tickets `PROJ-908`, `PROJ-909`, `PROJ-910` as specific edge cases (exact matches, stop-word dominance, label-only matches).
+- **Files Changed**:
   - `mcp-server/src/tools/mock_jira_tools.py`
-  - Mock dataset files
-  - Relevant tests
-- **Constraints**:
-  - Docker Compose only
-  - EC2/SSM validation where appropriate
-  - Retrieval must remain deterministic
-  - DO NOT introduce embeddings/vector DB unless explicitly approved
-  - Do not change the MCP architecture unnecessarily
-- **Acceptance criteria**: `find_similar_tickets` must return highly relevant Mock Jira tickets deterministically.
+  - `mcp-server/tests/test_mock_jira_tools.py` (New file)
+  - `mcp-server/tests/test_tools.py`
+- **Tests Added**:
+  - `test_find_similar_exact_component_match`
+  - `test_find_similar_stop_words_ignored`
+  - `test_find_similar_deterministic_ordering`
+  - `test_search_tickets_basic`
+  - `test_find_similar_technical_terms`
+  - `test_find_similar_labels`
+- **Test Results**: All tests passed mathematically asserting weights, stop words, deterministic sorting, and edge cases.
+- **Docker/EC2 Validation**: Rebuilt Docker Compose on EC2 and successfully ran `curl` for PROJ-1002, validating the LLM used the highly relevant `PROJ-908` ticket.
+- **Acceptance Criteria**: `find_similar_tickets` successfully returns highly relevant Mock Jira tickets deterministically.
+- **Commit hash**: Will be the HEAD of `test-phase8` when merged to main.
 
 ## 7. Phase 9–14
 
-- **Phase 9 — NOT STARTED**: FastAPI backend integration (REST API schemas).
+- **Phase 9 — NEXT / NOT STARTED**: FastAPI backend integration (REST API schemas).
 - **Phase 10 — NOT STARTED**: React frontend integration (connect UI to FastAPI, display structured response).
 - **Phase 11 — NOT STARTED**: End-to-end application integration (CORS, network verification).
 - **Phase 12 — NOT STARTED**: Security, validation, error handling, structured logging.
