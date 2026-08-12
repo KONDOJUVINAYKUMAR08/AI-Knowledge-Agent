@@ -51,6 +51,7 @@ class MCPClient:
         # Holds the live client context manager
         self._http_cm = None
         self._session_cm = None
+        self._lock = asyncio.Lock()
 
     @property
     def is_connected(self) -> bool:
@@ -62,6 +63,11 @@ class MCPClient:
 
     async def connect(self) -> None:
         """Start the MCP session over Streamable HTTP."""
+        async with self._lock:
+            await self._locked_connect()
+
+    async def _locked_connect(self) -> None:
+        """Internal connect that requires the caller to hold the lock."""
         if self._connected:
             logger.warning("mcp_client.already_connected")
             return
@@ -89,11 +95,17 @@ class MCPClient:
             )
         except Exception as exc:
             logger.exception("mcp_client.connection_failed", error=str(exc))
+            await self._locked_disconnect()
             raise MCPClientError(f"Failed to connect to MCP server: {exc}") from exc
 
     async def disconnect(self) -> None:
         """Terminate the MCP session."""
-        if not self._connected:
+        async with self._lock:
+            await self._locked_disconnect()
+            
+    async def _locked_disconnect(self) -> None:
+        """Internal disconnect that requires the caller to hold the lock."""
+        if not self._connected and self._session is None and self._http_cm is None:
             return
 
         try:
@@ -111,6 +123,14 @@ class MCPClient:
             self._available_tools = {}
             logger.info("mcp_client.disconnected")
 
+    async def _ensure_connected(self) -> None:
+        """Ensure connection is active; reconnect if not."""
+        if not self._connected:
+            async with self._lock:
+                if not self._connected:
+                    logger.info("mcp_client.attempting_reconnect")
+                    await self._locked_connect()
+
     async def _refresh_tools(self) -> None:
         """Fetch and cache the list of available tools from the server."""
         if not self._session:
@@ -120,11 +140,18 @@ class MCPClient:
         self._available_tools = {tool.name: tool for tool in response.tools}
 
     async def list_tools(self) -> list[Tool]:
-        """Return the list of available tools, refreshing from server."""
-        if not self._connected:
-            raise MCPClientError("Not connected to MCP server")
-        await self._refresh_tools()
-        return self.available_tools
+        """Return the list of available tools, reconnecting/refreshing from server."""
+        await self._ensure_connected()
+        try:
+            # We already refreshed during connect, but this forces a fresh list
+            # if we were already connected.
+            await self._refresh_tools()
+            return self.available_tools
+        except Exception as exc:
+            logger.exception("mcp_client.list_tools_failed", error=str(exc))
+            # Transport failure
+            await self.disconnect()
+            raise MCPClientError(f"Failed to list tools: {exc}") from exc
 
     async def call_tool(self, tool_name: str, arguments: dict[str, Any] | None = None) -> Any:
         """
@@ -140,9 +167,9 @@ class MCPClient:
         Raises:
             ToolNotFoundError: If tool is not registered.
             ToolInvocationError: If the tool returns an error.
+            MCPClientError: If transport/session drops.
         """
-        if not self._connected or not self._session:
-            raise MCPClientError("Not connected to MCP server")
+        await self._ensure_connected()
 
         if tool_name not in self._available_tools:
             raise ToolNotFoundError(
@@ -151,24 +178,36 @@ class MCPClient:
 
         args = arguments or {}
         logger.info("mcp_client.calling_tool", tool=tool_name, args=args)
+        
+        # We need self._session for type checking/linting inside the try block,
+        # but _ensure_connected should guarantee it's not None.
+        session = self._session
+        if not session:
+            raise MCPClientError("Session is none even after connecting")
 
         try:
             result = await asyncio.wait_for(
-                self._session.call_tool(tool_name, args),
+                session.call_tool(tool_name, args),
                 timeout=self._settings.agent_tool_timeout_seconds,
             )
         except asyncio.TimeoutError:
-            raise ToolInvocationError(
+            logger.error("mcp_client.tool_call_timeout", tool=tool_name)
+            # Timeout is a transport/session failure. Disconnect.
+            await self.disconnect()
+            raise MCPClientError(
                 f"Tool '{tool_name}' timed out after {self._settings.agent_tool_timeout_seconds}s"
             )
         except Exception as exc:
-            logger.exception("mcp_client.tool_call_failed", tool=tool_name, error=str(exc))
-            raise ToolInvocationError(f"Tool '{tool_name}' invocation failed: {exc}") from exc
+            logger.exception("mcp_client.transport_call_failed", tool=tool_name, error=str(exc))
+            # Any other exception here is a transport error (e.g. EOF, connection reset)
+            await self.disconnect()
+            raise MCPClientError(f"Transport/Session failed calling '{tool_name}': {exc}") from exc
 
         is_err = getattr(result, "isError", getattr(result, "is_error", False))
         if is_err:
             error_msg = str(result.content)
             logger.error("mcp_client.tool_returned_error", tool=tool_name, error=error_msg)
+            # Tool logic error. Do NOT disconnect.
             raise ToolInvocationError(f"Tool '{tool_name}' returned error: {error_msg}")
 
         # Extract text content from MCP response
@@ -191,3 +230,4 @@ class MCPClient:
 
     async def __aexit__(self, *args: Any) -> None:
         await self.disconnect()
+
