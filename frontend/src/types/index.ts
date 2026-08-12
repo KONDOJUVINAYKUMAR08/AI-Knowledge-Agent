@@ -65,14 +65,20 @@ export interface ToolInfo {
   parameters?: Record<string, unknown>;
 }
 
+export interface StructuredResponse {
+  ticket_summary: string;
+  what_we_know: string;
+  similar_historical_tickets: string;
+  previous_resolution: string;
+  recommended_investigation: string;
+  missing_information: string;
+  sources: string[];
+}
+
 export interface AgentQueryResponse {
   success: boolean;
-  query: string;
-  intent: IntentType;
-  tool_name: string | null;
-  tool_arguments: Record<string, unknown>;
-  result: unknown;
   error: string | null;
+  structured_response: StructuredResponse | null;
   timestamp: string;
   processing_ms: number;
 }
