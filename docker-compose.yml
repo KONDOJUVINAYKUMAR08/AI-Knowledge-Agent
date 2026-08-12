@@ -23,7 +23,10 @@ services:
       - API_PORT=8000
       - LOG_LEVEL=INFO
       - LOG_FORMAT=json
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - LLM_MODEL=${LLM_MODEL:-gemini-3.5-flash}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
     depends_on:
       - mcp-server
     restart: unless-stopped

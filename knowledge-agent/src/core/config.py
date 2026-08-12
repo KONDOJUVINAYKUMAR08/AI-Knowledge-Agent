@@ -32,9 +32,10 @@ class Settings(BaseSettings):
     )
 
     # LLM
-    llm_provider: str = Field(default="openai")
-    llm_model: str = Field(default="gpt-4o-mini")
+    llm_provider: str = Field(default="gemini")
+    llm_model: str = Field(default="gemini-3.5-flash")
     openai_api_key: str | None = Field(default=None)
+    google_api_key: str | None = Field(default=None)
 
     # Agent
     agent_max_tool_retries: int = Field(default=3)

@@ -12,13 +12,13 @@ from datetime import UTC, datetime
 from typing import Any, Literal, TypedDict
 
 from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 from pydantic import BaseModel, Field
 
 from src.core.config import get_settings
 from src.core.logging import get_logger
 from src.mcp_client.client import MCPClient, MCPClientError
+from src.agent.llm_factory import create_llm
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -55,12 +55,8 @@ class KnowledgeAgent:
     def __init__(self, mcp_client: MCPClient) -> None:
         self._client = mcp_client
         
-        # Initialize LLM with structured output
-        llm = ChatOpenAI(
-            model=settings.llm_model,
-            api_key=settings.openai_api_key,
-            temperature=0,
-        )
+        # Initialize LLM with structured output via factory
+        llm = create_llm(settings)
         self._llm = llm.with_structured_output(AgentResponseSchema)
         
         # Build LangGraph
