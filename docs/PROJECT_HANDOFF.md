@@ -148,8 +148,137 @@ Secrets are runtime configuration only and are not committed. The `.env` files m
 - **Remote repository**: https://github.com/KONDOJUVINAYKUMAR08/AI-Knowledge-Agent.git
 - **State**: Clean
 
-## 10. Phase 7-14
-Phase definition not recoverable from repository; must be recovered from project history/context before implementation.
+## 10. Phase 7-14 Execution Plan
+
+### Recovered Roadmap
+
+The following is the planned roadmap recovered from the original project definition:
+
+#### Phase 7: Knowledge Agent/MCP integration refinement and verification.
+1. **Phase number**: 7
+2. **Phase name**: Knowledge Agent/MCP integration refinement and verification
+3. **Exact objective**: Refine and harden the communication between the Knowledge Agent and the MCP Server.
+4. **Features/tasks to implement**: Ensure robust error handling when tools fail, validate MCP transport stability, and optimize the deterministic prompt usage.
+5. **Files/components expected to change**: `knowledge-agent/src/agent/agent.py`, `knowledge-agent/src/mcp_client/client.py`.
+6. **AWS resources involved**: EC2 instance, SSM (for testing).
+7. **Docker/Kubernetes requirements**: Docker Compose only (no Kubernetes/EKS).
+8. **Testing requirements**: Verify error handling with Mock Jira.
+9. **Acceptance criteria**: Agent successfully handles MCP disconnects or tool errors gracefully without crashing.
+10. **Dependencies on previous phases**: Requires Phase 6 complete.
+11. **Decisions or constraints**: Must use Streamable HTTP over Docker bridge network. 
+
+#### Phase 8: Historical/similar-ticket retrieval refinement.
+1. **Phase number**: 8
+2. **Phase name**: Historical/similar-ticket retrieval refinement
+3. **Exact objective**: Improve the Mock Jira deterministic retrieval logic for finding related issues.
+4. **Features/tasks to implement**: Expand the keywords, summary, and component-based matching algorithm in the Mock Jira dataset.
+5. **Files/components expected to change**: `mcp-server/src/tools/mock_jira_tools.py`, Mock dataset files.
+6. **AWS resources involved**: EC2 instance, SSM.
+7. **Docker/Kubernetes requirements**: Docker Compose only.
+8. **Testing requirements**: Unit tests for the deterministic algorithm matching.
+9. **Acceptance criteria**: `find_similar_tickets` returns highly relevant Mock Jira tickets deterministically.
+10. **Dependencies on previous phases**: Requires Phase 7 complete.
+11. **Decisions or constraints**: Similar-ticket retrieval is deterministic and does NOT use embeddings/vector DB unless explicitly approved.
+
+#### Phase 9: FastAPI backend integration.
+1. **Phase number**: 9
+2. **Phase name**: FastAPI backend integration
+3. **Exact objective**: Expose the LangGraph Knowledge Agent functionality via a stable REST API.
+4. **Features/tasks to implement**: Define FastAPI routes (e.g., `/query`), request/response Pydantic schemas, and integrate the agent invocation.
+5. **Files/components expected to change**: `knowledge-agent/src/api/main.py`, `knowledge-agent/src/api/routers/`.
+6. **AWS resources involved**: EC2 instance, SSM.
+7. **Docker/Kubernetes requirements**: Docker Compose (knowledge-agent container port 8000).
+8. **Testing requirements**: API endpoint tests (e.g., pytest with FastAPI TestClient).
+9. **Acceptance criteria**: The API successfully receives a query and returns the structured LLM response.
+10. **Dependencies on previous phases**: Requires Phase 8 complete.
+11. **Decisions or constraints**: The backend must safely manage the runtime API keys without exposing them.
+
+#### Phase 10: React frontend integration.
+1. **Phase number**: 10
+2. **Phase name**: React frontend integration
+3. **Exact objective**: Connect the React chat UI to the FastAPI backend.
+4. **Features/tasks to implement**: Implement API service calls in React, handle loading states, and display the structured output (Summary, Previous Resolution, Guidance).
+5. **Files/components expected to change**: `frontend/src/` (components, services, Zustand store).
+6. **AWS resources involved**: EC2 instance, SSM.
+7. **Docker/Kubernetes requirements**: Docker Compose (frontend container port 80).
+8. **Testing requirements**: Frontend unit tests / rendering tests.
+9. **Acceptance criteria**: User can type a query in the UI and see the agent's response formatted correctly.
+10. **Dependencies on previous phases**: Requires Phase 9 complete.
+11. **Decisions or constraints**: Frontend must NEVER receive LLM API keys.
+
+#### Phase 11: End-to-end application integration.
+1. **Phase number**: 11
+2. **Phase name**: End-to-end application integration
+3. **Exact objective**: Verify the complete pipeline from React UI to FastAPI to LangGraph to MCP to Mock Jira to LLM and back.
+4. **Features/tasks to implement**: System integration testing, CORS configuration, and network routing verification.
+5. **Files/components expected to change**: `docker-compose.yml`, frontend API config, FastAPI CORS middleware.
+6. **AWS resources involved**: EC2 instance, SSM.
+7. **Docker/Kubernetes requirements**: Complete Docker Compose orchestration.
+8. **Testing requirements**: End-to-end manual and automated integration testing.
+9. **Acceptance criteria**: Seamless data flow across all 3 containers without network or CORS errors.
+10. **Dependencies on previous phases**: Requires Phase 10 complete.
+11. **Decisions or constraints**: No Kubernetes, standard Docker Compose bridge networking.
+
+#### Phase 12: Security, validation, error handling and observability.
+1. **Phase number**: 12
+2. **Phase name**: Security, validation, error handling and observability
+3. **Exact objective**: Ensure the application is "production-grade" for a POC (clean architecture, safe handling).
+4. **Features/tasks to implement**: Structured JSON logging (structlog), input validation, safe error messages to the frontend.
+5. **Files/components expected to change**: Middleware, logging configurations across all containers.
+6. **AWS resources involved**: EC2 instance, SSM.
+7. **Docker/Kubernetes requirements**: Docker Compose logs.
+8. **Testing requirements**: Ensure errors do not leak stack traces or secrets to the UI.
+9. **Acceptance criteria**: Clean structured logs, no sensitive data leakage.
+10. **Dependencies on previous phases**: Requires Phase 11 complete.
+11. **Decisions or constraints**: Do not add technologies merely to make the project look complicated (no Kafka, etc.).
+
+#### Phase 13: Testing and reliability.
+1. **Phase number**: 13
+2. **Phase name**: Testing and reliability
+3. **Exact objective**: Stabilize the application for the final demo.
+4. **Features/tasks to implement**: Increase test coverage (pytest, vitest), ensure reliable container restartability.
+5. **Files/components expected to change**: `tests/` directories across frontend, backend, and mcp-server.
+6. **AWS resources involved**: EC2 instance.
+7. **Docker/Kubernetes requirements**: `restart: always` or `unless-stopped` in Docker Compose.
+8. **Testing requirements**: Run full test suites.
+9. **Acceptance criteria**: Tests pass reliably, containers restart correctly on failure.
+10. **Dependencies on previous phases**: Requires Phase 12 complete.
+11. **Decisions or constraints**: Keep it simple and reliable.
+
+#### Phase 14: Final demo preparation and documentation.
+1. **Phase number**: 14
+2. **Phase name**: Final demo preparation and documentation
+3. **Exact objective**: Prepare the POC for the manager-approved demonstration.
+4. **Features/tasks to implement**: Finalize `README.md`, record demo steps, ensure the "Help me understand PROJ-1002" scenario is flawless.
+5. **Files/components expected to change**: `docs/`, `README.md`.
+6. **AWS resources involved**: EC2 instance.
+7. **Docker/Kubernetes requirements**: Final Docker Compose build.
+8. **Testing requirements**: Rehearse demo scenario.
+9. **Acceptance criteria**: Demo successfully executes the exact expected workflow for PROJ-1002.
+10. **Dependencies on previous phases**: Requires Phase 13 complete.
+11. **Decisions or constraints**: Must demonstrate AI Agent + MCP + Jira integration keeping Jira READ-ONLY.
+
+---
+
+### Current State Summary (End of Phase 6)
+- Phase 1-6 are complete.
+- MCP Server uses Streamable HTTP.
+- MCP endpoint is `/mcp`.
+- Knowledge Agent communicates with MCP through Docker networking.
+- Mock Jira data is accessed through MCP.
+- Similar-ticket retrieval is deterministic.
+- LangGraph is used for the Knowledge Agent workflow.
+- LLM provider abstraction supports Gemini and OpenAI.
+- Gemini is currently the default provider.
+- Current configured Gemini model is `gemini-3.5-flash`.
+- `GOOGLE_API_KEY` is provided only to knowledge-agent at runtime.
+- API keys are not committed.
+- `.env` is ignored.
+- Frontend does not receive the LLM API key.
+- Phase 6 was successfully tested end-to-end with PROJ-1002.
+- Phase 6 changes were committed and pushed.
+- Repository cleanup was completed.
+- Working tree is clean.
 
 ## 11. Important Engineering Constraints
 - Jira data must be accessed through MCP.
