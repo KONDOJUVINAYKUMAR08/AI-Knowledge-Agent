@@ -68,7 +68,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               role: 'agent',
               status: 'done',
               content: '',
-              response: payload as ChatMessage['response'],
+              response: payload as unknown as ChatMessage['response'],
               timestamp: new Date(),
             }
             return { messages: [...messages, agentMessage], isThinking: false }

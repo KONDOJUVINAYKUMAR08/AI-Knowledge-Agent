@@ -1,4 +1,4 @@
-import type { Ticket } from '../../types'
+import type { Ticket, TicketComment, LinkedIssue } from '../types'
 import { formatDistanceToNow } from 'date-fns'
 
 interface Props {
@@ -136,7 +136,7 @@ export function TicketCard({ ticket }: Props) {
             <div>
               <div className="ticket-meta-label" style={{ marginBottom: '6px' }}>Labels</div>
               <div className="tags-list">
-                {ticket.labels.map((label) => (
+                {ticket.labels.map((label: string) => (
                   <span key={label} className="tag">{label}</span>
                 ))}
               </div>
@@ -148,7 +148,7 @@ export function TicketCard({ ticket }: Props) {
             <div>
               <div className="ticket-meta-label" style={{ marginBottom: '6px' }}>Components</div>
               <div className="tags-list">
-                {ticket.components.map((c) => (
+                {ticket.components.map((c: string) => (
                   <span
                     key={c}
                     className="tag"
@@ -174,7 +174,7 @@ export function TicketCard({ ticket }: Props) {
             <div>
               <div className="ticket-meta-label" style={{ marginBottom: '6px' }}>Linked Issues</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {ticket.linked_issues.map((li, i) => (
+                {ticket.linked_issues.map((li: LinkedIssue, i: number) => (
                   <div
                     key={i}
                     style={{
@@ -215,7 +215,7 @@ export function TicketCard({ ticket }: Props) {
               <div className="ticket-meta-label" style={{ marginBottom: '8px' }}>
                 Comments ({ticket.comments.length})
               </div>
-              {ticket.comments.map((comment, i) => (
+              {ticket.comments.map((comment: TicketComment, i: number) => (
                 <div key={i} className="comment">
                   <UserAvatar name={comment.author.display_name} />
                   <div className="comment-content">

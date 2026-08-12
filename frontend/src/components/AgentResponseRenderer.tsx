@@ -1,5 +1,5 @@
 import ReactMarkdown from 'react-markdown'
-import type { AgentQueryResponse } from '../../types'
+import type { AgentQueryResponse } from '../types'
 
 interface Props {
   response: AgentQueryResponse
@@ -97,7 +97,7 @@ export function AgentResponseRenderer({ response }: Props) {
         <div style={{ marginTop: '8px' }}>
           <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>SOURCES:</span>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
-            {structured_response.sources.map((source, idx) => (
+            {structured_response.sources.map((source: string, idx: number) => (
               <span key={idx} className="status-pill done" style={{ fontSize: '0.7rem', padding: '2px 8px' }}>
                 {source}
               </span>
