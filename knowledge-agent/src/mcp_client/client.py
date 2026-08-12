@@ -165,7 +165,8 @@ class MCPClient:
             logger.exception("mcp_client.tool_call_failed", tool=tool_name, error=str(exc))
             raise ToolInvocationError(f"Tool '{tool_name}' invocation failed: {exc}") from exc
 
-        if result.isError:
+        is_err = getattr(result, "isError", getattr(result, "is_error", False))
+        if is_err:
             error_msg = str(result.content)
             logger.error("mcp_client.tool_returned_error", tool=tool_name, error=error_msg)
             raise ToolInvocationError(f"Tool '{tool_name}' returned error: {error_msg}")
