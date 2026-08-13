@@ -15,11 +15,13 @@
 
 | Component | Description | Port |
 |---|---|---|
-| `frontend/` | React + TypeScript chat UI | 5173 |
+| `frontend/` | React + TypeScript chat UI | 80 (Docker host), 5173 (Vite development) |
 | `knowledge-agent/` | FastAPI backend + MCP Client | 8000 |
 | `mcp-server/` | MCP Server with mock tools | stdio |
 
 ## Quick Start
+
+The production Docker Compose entry point is `http://localhost/` (host port 80 mapped to the frontend Nginx container on port 80). Port 5173 remains the Vite development-server port only.
 
 ```bash
 # 1. MCP Server
