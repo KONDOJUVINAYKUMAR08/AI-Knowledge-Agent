@@ -30,7 +30,7 @@ def mock_agent() -> KnowledgeAgent:
     class DummyTool:
         name = "dummy_tool"
         description = "A dummy tool"
-        inputSchema = {}
+        input_schema = {}
 
     mock_mcp.available_tools = [DummyTool()]
     mock_mcp.list_tools.return_value = [DummyTool()]

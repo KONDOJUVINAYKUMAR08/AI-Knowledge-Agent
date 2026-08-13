@@ -167,7 +167,7 @@ async def list_tools() -> ToolsResponse:
         ToolInfo(
             name=t.name,
             description=t.description,
-            parameters=t.inputSchema,
+            parameters=t.input_schema,
         )
         for t in tools
     ]
