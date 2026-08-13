@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8000)
     api_reload: bool = Field(default=False)
     api_cors_origins: list[str] = Field(
-        default=["http://localhost:5173", "http://localhost:3000"]
+        default=["http://localhost:5173"]
     )
 
     # MCP Server

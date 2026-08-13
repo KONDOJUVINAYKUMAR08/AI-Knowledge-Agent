@@ -63,8 +63,13 @@ describe('AgentResponseRenderer', () => {
     // Check content (ReactMarkdown renders paragraphs)
     expect(screen.getByText('This is the summary')).toBeDefined()
     expect(screen.getByText('This is what we know')).toBeDefined()
+    expect(screen.getByText('These are similar tickets')).toBeDefined()
+    expect(screen.getByText('This was resolved')).toBeDefined()
+    expect(screen.getByText('Investigate this')).toBeDefined()
+    expect(screen.getByText('Missing this')).toBeDefined()
     
-    // Check sources
+    // Check the seventh structured section: sources
+    expect(screen.getByText('SOURCES:')).toBeDefined()
     expect(screen.getByText('PROJ-1002')).toBeDefined()
     expect(screen.getByText('PROJ-908')).toBeDefined()
   })

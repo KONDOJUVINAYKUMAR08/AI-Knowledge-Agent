@@ -21,6 +21,7 @@ services:
     environment:
       - API_HOST=0.0.0.0
       - API_PORT=8000
+      - API_CORS_ORIGINS=${API_CORS_ORIGINS:-["http://localhost:5173"]}
       - LOG_LEVEL=INFO
       - LOG_FORMAT=json
       - LLM_PROVIDER=${LLM_PROVIDER:-gemini}

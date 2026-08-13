@@ -4,8 +4,8 @@
 - **Repository name**: AI-Knowledge-Agent
 - **GitHub remote**: https://github.com/KONDOJUVINAYKUMAR08/AI-Knowledge-Agent.git
 - **Current branch**: main
-- **Current HEAD commit**: bb7c9e4 feat(phase-7): refine MCP client integration and robust error handling
-- **Current working tree status**: Clean
+- **Current HEAD commit**: ba02b2f docs: update PROJECT_HANDOFF.md for Phase 10 completion
+- **Current working tree status**: Phase 11 changes present and intentionally uncommitted pending review and EC2 validation
 - **Project directory structure**:
   - `docs/`: Documentation and project handoff.
   - `frontend/`: React frontend application.
@@ -125,9 +125,9 @@ Structured Knowledge Response
 
 ## 5. Current Repository State
 - **Current branch**: main
-- **Current HEAD commit**: eecc894 chore(phase-10): add testing dependencies to package.json
-- **Working tree is clean**: Yes
-- **Origin/main synchronized**: Yes
+- **Current HEAD commit**: ba02b2f docs: update PROJECT_HANDOFF.md for Phase 10 completion
+- **Working tree is clean**: No — Phase 11 implementation and tests are pending review
+- **Origin/main synchronized at baseline commit**: Yes (`ba02b2f`); Phase 11 changes have not been committed or pushed
 
 ## 6. Phase 8 — COMPLETE
 
@@ -232,10 +232,265 @@ Structured Knowledge Response
 ## 9. Phase 11–14
 
 - **Phase 10 — COMPLETE**
-- **Phase 11 — NEXT / NOT STARTED**: End-to-end application integration (CORS, network verification).
+- **Phase 11 — IN PROGRESS / NOT FULLY VALIDATED**: End-to-end application integration (CORS, network verification).
 - **Phase 12 — NOT STARTED**: Security, validation, error handling, structured logging.
 - **Phase 13 — NOT STARTED**: Testing and reliability (increase pytest/vitest coverage).
 - **Phase 14 — NOT STARTED**: Final demo preparation and documentation ("Help me understand PROJ-1002" final validation).
+
+### Phase 11 — Local Implementation Record
+
+**Objective**: Verify and prepare the complete supported path without changing the architecture:
+
+```text
+Browser -> React/Zustand -> Nginx -> FastAPI -> LangGraph -> MCP client
+-> Streamable HTTP -> Mock Jira MCP server -> structured LLM response
+-> React AgentResponseRenderer
+```
+
+**Local implementation completed so far**:
+- CORS now defaults only to the supported direct-development origin, `http://localhost:5173`; legacy `http://localhost:3000` was removed because no active repository consumer uses it.
+- CORS credentials were disabled because the frontend does not use cookies, authorization headers, or credentialed fetch requests.
+- CORS methods and headers were limited to the actual API contract: `GET`, `POST`, and `Content-Type`.
+- `API_CORS_ORIGINS` remains a Pydantic environment setting and is forwarded into the knowledge-agent service by Docker Compose. Its value must be a JSON list when overridden.
+- Backend tests were added for the allowed origin, disallowed origin, JSON POST preflight, credentials behavior, and environment configuration.
+- WebSocket tests were added for malformed messages, unsupported messages, empty queries, agent query errors, and unavailable-agent handling. Production WebSocket behavior did not need modification.
+- Frontend tests were added for the same-origin `/api/query` REST request and Zustand REST fallback when WebSocket is already unavailable.
+- Renderer coverage was strengthened to assert all seven structured sections.
+- Nginx was inspected and not changed: `/api/` strips the prefix and proxies to `knowledge-agent:8000`; `/ws` forwards the required WebSocket upgrade headers.
+- No readiness/healthcheck behavior was added because the possible startup race has not been reproduced.
+- No Dockerfile, LangGraph, MCP transport, Mock Jira, LLM, or dependency declaration was changed.
+
+**Files changed**:
+- `knowledge-agent/src/core/config.py`
+- `knowledge-agent/src/api/main.py`
+- `knowledge-agent/tests/test_api.py`
+- `frontend/src/__tests__/AgentResponseRenderer.test.tsx`
+- `frontend/src/__tests__/AgentRestService.test.ts`
+- `frontend/src/__tests__/chatStore.test.ts`
+- `docker-compose.yml`
+- `docs/PROJECT_HANDOFF.md`
+
+**Local environment prepared**:
+- Python 3.13.2 virtual environments created at `knowledge-agent/.venv` and `mcp-server/.venv`.
+- Both Python projects installed from their existing `pyproject.toml` declarations with `pip install -e ".[dev]"`.
+- No Python lockfile, requirements file, or dependency declaration was created or changed.
+- Node.js 20.18.3 and npm 10.8.2 were used for the frontend installation attempt.
+
+**Test and build results**:
+- Knowledge-agent baseline: all existing 24 tests reached `PASSED`, but pytest could not exit because its cache provider could not write in the restricted workspace sandbox.
+- Knowledge-agent final local run with cache collection disabled: **31 passed**, with two existing Starlette deprecation warnings for the 422 status constant.
+- MCP server: **11 passed**.
+- Static Compose YAML parsing: passed; `API_CORS_ORIGINS` remains one environment value and `mcp-server` has no `ports` mapping.
+- `npm ci`: incomplete. It emitted Node engine warnings and npm's internal `Exit handler never called!` error. The resulting `node_modules` tree has no `.bin`, `vitest`, `tsc`, or Vite executable.
+- Frontend Vitest: not runnable (`'vitest' is not recognized`).
+- Frontend production build: not runnable (`'tsc' is not recognized`).
+- No frontend lockfile or package declaration was modified.
+- Docker/Compose/Nginx runtime validation: not run because Docker/WSL are unavailable on the corporate laptop.
+- AWS/EC2 validation: not run because this laptop cannot use the AWS CLI through the corporate TLS path.
+- Real LLM regression: not run locally; unit tests use mocks and require no real key.
+
+**Mock Jira demonstration boundary**:
+- Jira data and Jira-oriented tools are intentionally mocked and read-only because organizational Jira access is unavailable.
+- React, Zustand, Nginx, FastAPI, LangGraph, MCP client/server, Streamable HTTP, structured validation, and rendering are real application components.
+- The canonical supported demonstration is `Help me understand PROJ-1002`.
+- The deterministic tool path is `get_ticket(PROJ-1002)` followed by `find_similar_tickets(PROJ-1002)`; `PROJ-908` is the deterministic top historical match.
+- Generic UI examples that do not contain a ticket ID remain outside Phase 11 scope.
+
+**Known risks still requiring validation**:
+- Docker `depends_on` provides start order but not readiness. Repeated cold starts must determine whether the MCP startup race is reproducible before any healthcheck/readiness change is considered.
+- The frontend dependency tree must be installed and tested in a supported Node environment; local Node 20.18.3 does not satisfy several locked packages' reported engine requirements.
+- The configured provider/model and approved runtime key must be validated on EC2 without exposing the key.
+- CORS middleware does not enforce WebSocket origins; Phase 11 validates the supported same-origin Nginx route only.
+- Host port 8000 remains published for existing diagnostics. MCP port 8001 must remain internal.
+
+### Phase 11 EC2 Validation Runbook — Still Required
+
+Use AWS Console Session Manager, Systems Manager Run Command, AWS CloudShell, or another authorized machine. Do not use `--no-verify-ssl`, do not widen security groups, and do not put secrets in Git or command arguments.
+
+1. Confirm and update the repository after an approved Phase 11 commit exists:
+
+```bash
+sudo -iu ubuntu
+REPO_DIR=/home/ubuntu/AI-Knowledge-Agent
+test -d "$REPO_DIR/.git"
+cd "$REPO_DIR"
+
+git status --short --branch
+git branch --show-current
+git fetch origin main
+git log --oneline -10
+
+APPROVED_COMMIT=<approved-phase-11-commit>
+test "$(git rev-parse origin/main)" = "$APPROVED_COMMIT"
+git pull --ff-only origin main
+test "$(git rev-parse HEAD)" = "$APPROVED_COMMIT"
+```
+
+2. Verify Docker and Compose, then validate the Compose model without printing resolved secrets:
+
+```bash
+docker --version
+docker compose version
+docker info
+docker compose config -q
+```
+
+3. Configure the selected LLM credential outside the repository. Prefer an existing approved secret manager. If none exists, use a permission-restricted file without typing the key into command history:
+
+```bash
+RUNTIME_DIR=/home/ubuntu/.config/ai-knowledge-agent
+RUNTIME_ENV="$RUNTIME_DIR/runtime.env"
+install -d -m 700 "$RUNTIME_DIR"
+umask 077
+read -rsp "Google API key: " DEMO_GOOGLE_KEY
+echo
+printf 'LLM_PROVIDER=gemini\nLLM_MODEL=gemini-3.5-flash\nGOOGLE_API_KEY=%s\n' \
+  "$DEMO_GOOGLE_KEY" > "$RUNTIME_ENV"
+unset DEMO_GOOGLE_KEY
+chmod 600 "$RUNTIME_ENV"
+stat -c '%a %U %n' "$RUNTIME_ENV"
+```
+
+Never print or commit `runtime.env`.
+
+4. Build and start the three-container stack:
+
+```bash
+docker compose --env-file "$RUNTIME_ENV" build
+docker compose --env-file "$RUNTIME_ENV" up -d
+docker compose ps
+```
+
+5. Verify direct FastAPI and Nginx REST routing:
+
+```bash
+curl -fsS http://localhost:8000/health | python3 -m json.tool
+curl -fsS http://localhost:5173/api/health | python3 -m json.tool
+curl -fsS http://localhost:5173/api/tools | python3 -m json.tool
+curl -fsSI http://localhost:5173/
+```
+
+Expected: health is `healthy`, `mcp_connected` is true, and all five tools are listed.
+
+6. Verify Docker DNS and that MCP port 8001 remains internal:
+
+```bash
+docker compose exec -T knowledge-agent python -c "import socket; print(socket.gethostbyname('mcp-server')); s=socket.create_connection(('mcp-server',8001),5); print('mcp-server:8001 reachable internally'); s.close()"
+docker inspect -f '{{json .NetworkSettings.Ports}}' knowledge-agent-mcp-server
+docker compose port mcp-server 8001
+```
+
+Expected: internal DNS/socket connectivity succeeds; there is no host binding for 8001.
+
+7. Verify the canonical REST query through Nginx:
+
+```bash
+QUERY_RESULT=$(mktemp /tmp/phase11-query.XXXXXX.json)
+curl -fsS -X POST http://localhost:5173/api/query \
+  -H 'Content-Type: application/json' \
+  --data '{"query":"Help me understand PROJ-1002"}' \
+  -o "$QUERY_RESULT"
+python3 -m json.tool "$QUERY_RESULT"
+python3 - "$QUERY_RESULT" <<'PY'
+import json
+import sys
+
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+required = {
+    "ticket_summary",
+    "what_we_know",
+    "similar_historical_tickets",
+    "previous_resolution",
+    "recommended_investigation",
+    "missing_information",
+    "sources",
+}
+assert data["success"] is True
+assert required <= set(data["structured_response"])
+print("PROJ-1002 structured REST response: PASS")
+PY
+rm -f "$QUERY_RESULT"
+```
+
+8. Verify malformed/error handling and a valid query through the host-published Nginx WebSocket path:
+
+```bash
+BACKEND_IMAGE=$(docker compose images -q knowledge-agent)
+docker run --rm --network host "$BACKEND_IMAGE" python - <<'PY'
+import asyncio
+import json
+import websockets
+
+async def main():
+    async with websockets.connect("ws://127.0.0.1:5173/ws", open_timeout=10) as ws:
+        await ws.send("not-json")
+        invalid = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
+        assert invalid["type"] == "error"
+
+        await ws.send(json.dumps({"type": "ping", "payload": {}}))
+        pong = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
+        assert pong["type"] == "pong"
+
+        await ws.send(json.dumps({
+            "type": "query",
+            "payload": {"query": "Help me understand PROJ-1002"},
+        }))
+        thinking = json.loads(await asyncio.wait_for(ws.recv(), timeout=30))
+        response = json.loads(await asyncio.wait_for(ws.recv(), timeout=90))
+        assert thinking["type"] == "thinking"
+        assert response["type"] == "response"
+        assert response["payload"]["success"] is True
+        print("Nginx WebSocket PROJ-1002 flow: PASS")
+
+asyncio.run(main())
+PY
+```
+
+9. Verify CORS directly against FastAPI. The same-origin Nginx browser path does not require CORS:
+
+```bash
+curl -sS -D - -o /dev/null \
+  -H 'Origin: http://localhost:5173' \
+  http://localhost:8000/health
+
+curl -sS -D - -o /dev/null \
+  -H 'Origin: http://localhost:3000' \
+  http://localhost:8000/health
+
+curl -sS -D - -o /dev/null -X OPTIONS \
+  -H 'Origin: http://localhost:5173' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: Content-Type' \
+  http://localhost:8000/query
+```
+
+Expected: only `localhost:5173` receives `Access-Control-Allow-Origin`; the preflight permits POST and Content-Type; credentials are not allowed.
+
+10. Inspect safe logs and perform browser evidence collection:
+
+```bash
+docker compose logs --since 10m --no-color frontend knowledge-agent mcp-server
+```
+
+Capture `docker compose ps`, `/api/health`, `/api/tools`, REST JSON, WebSocket PASS output, internal-only MCP port evidence, and browser screenshots showing all seven rendered sections. Do not collect environment dumps or secrets.
+
+11. Conditional startup-readiness test, only during an approved validation window:
+
+```bash
+docker compose --env-file "$RUNTIME_ENV" down
+docker compose --env-file "$RUNTIME_ENV" up -d
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+  if curl -fsS http://localhost:5173/api/health; then
+    break
+  fi
+  sleep 3
+done
+docker compose ps
+```
+
+Repeat cold startup sufficiently to determine whether FastAPI can remain degraded after MCP starts. Do not add healthchecks/readiness unless this failure is actually reproduced.
+
+**Phase 11 completion status**: NOT COMPLETE. Local backend/MCP validation has passed, but frontend tests/build and the required Docker/Compose/Nginx/MCP/LLM/EC2 REST and WebSocket validation remain outstanding. Phase 12 must not start.
 
 ## 10. Continuation Instructions for Future Agents
 **CONTINUATION INSTRUCTIONS FOR FUTURE AGENTS**
