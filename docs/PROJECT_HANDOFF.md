@@ -4,8 +4,8 @@
 - **Repository name**: AI-Knowledge-Agent
 - **GitHub remote**: https://github.com/KONDOJUVINAYKUMAR08/AI-Knowledge-Agent.git
 - **Current branch**: main
-- **Current HEAD commit**: f56299f Fix MCP tool schema handling
-- **Current working tree status**: Phase 11 evidence and standard-port-80 configuration updates are pending review and commit
+- **Current HEAD commit**: 04a6086 fix(phase-11): expose production frontend on port 80
+- **Current working tree status**: Port-80 implementation is pushed and deployed; this validation evidence update is pending review and commit
 - **Project directory structure**:
   - `docs/`: Documentation and project handoff.
   - `frontend/`: React frontend application.
@@ -126,9 +126,9 @@ Structured Knowledge Response
 
 ## 5. Current Repository State
 - **Current branch**: main
-- **Current HEAD commit**: f56299f Fix MCP tool schema handling
+- **Current HEAD commit**: 04a6086 fix(phase-11): expose production frontend on port 80
 - **Working tree was clean before this handoff evidence update**: Yes
-- **Origin/main synchronized at validated implementation commit**: Yes (`f56299f5333862cbe25f226ccbe9ccd062873374`)
+- **Origin/main synchronized at deployed implementation commit**: Yes (`04a6086dad9005b29b69ca84ff64b82a29b95095`)
 
 ## 6. Phase 8 — COMPLETE
 
@@ -280,6 +280,7 @@ Browser -> React/Zustand -> Nginx -> FastAPI -> LangGraph -> MCP client
 - `122606084347da33ae875da527172c54af7745ab` — `test(phase-11): validate application integration paths`
 - `376530cde12891630c33c914ef1124bd728a9ab4` — `fix(phase-11): align frontend build with Node requirements`
 - `f56299f5333862cbe25f226ccbe9ccd062873374` — `Fix MCP tool schema handling`
+- `04a6086dad9005b29b69ca84ff64b82a29b95095` — `fix(phase-11): expose production frontend on port 80`
 
 **Local environment prepared**:
 - Python 3.13.2 virtual environments created at `knowledge-agent/.venv` and `mcp-server/.venv`.
@@ -291,9 +292,11 @@ Browser -> React/Zustand -> Nginx -> FastAPI -> LangGraph -> MCP client
 - Knowledge-agent baseline: all existing 24 tests reached `PASSED`, but pytest could not exit because its cache provider could not write in the restricted workspace sandbox.
 - Knowledge-agent final local run with cache collection disabled: **31 passed**, with two existing Starlette deprecation warnings for the 422 status constant.
 - MCP server: **11 passed**.
+- Final workstation regression at `04a6086`: knowledge-agent **31 passed, 2 warnings in 3.07s** and MCP server **11 passed in 1.37s**.
 - Static Compose YAML parsing: passed; `API_CORS_ORIGINS` remains one environment value and `mcp-server` has no `ports` mapping.
-- Proposed standard-port configuration was parsed locally and asserted as frontend host `80` -> container `80`, knowledge-agent diagnostic host `8000` -> container `8000`, and no MCP host publication. Docker Compose CLI validation remains pending on EC2 because Docker is unavailable on the corporate workstation.
+- Standard-port configuration was parsed locally and asserted as frontend host `80` -> container `80`, knowledge-agent diagnostic host `8000` -> container `8000`, and no MCP host publication. EC2 `docker compose config -q`, full build, and force-recreate deployment subsequently passed.
 - `npm ci`: incomplete. It emitted Node engine warnings and npm's internal `Exit handler never called!` error. The resulting `node_modules` tree has no `.bin`, `vitest`, `tsc`, or Vite executable.
+- Final workstation frontend commands remain environment-blocked: `npm test -- --run` returned `'vitest' is not recognized`, and `npm run build` returned `'tsc' is not recognized`. No installation or dependency change was attempted. The Dockerized Node 22.22.2 results below remain the authoritative frontend validation.
 - EC2 frontend build stage used Node **v22.22.2**. TypeScript and the Vite production build passed (`514 modules transformed`).
 - EC2 frontend Vitest: **3 test files passed, 6 tests passed**. The prior `markAsUncloneable` failure was not present after the Node 22.22.2 remediation.
 - No frontend lockfile or package declaration was modified.
@@ -306,9 +309,17 @@ Browser -> React/Zustand -> Nginx -> FastAPI -> LangGraph -> MCP client
 - Nginx WebSocket validation: malformed JSON error, ping/pong, thinking event, successful structured response, seven fields, and `PROJ-908` all passed.
 - EC2 CORS validation: `http://localhost:5173` allowed, legacy `http://localhost:3000` not allowed, POST/Content-Type preflight passed, and credentials were not enabled.
 - Runtime environment file remained outside the repository with mode `600`; its contents were not printed.
-- A mobile-browser screenshot of the deployed Nginx frontend at `http://44.201.26.241:5173/` confirms that the React UI loads, displays the five MCP tools, renders the successful `PROJ-1002` response, shows Ticket Summary, What We Know, Similar Historical Tickets, Previous Resolution, Recommended Investigation, and Missing Information, and includes `PROJ-908`. The Sources section is below the captured viewport and was not evidenced in the screenshot.
-- The screenshot does not independently evidence the loading transition, invalid-query error state, browser network route, or absence of browser-exposed credentials. A direct request to the shared URL continued to time out from the corporate Codex workstation, so these items and repeated cold-start readiness validation remain pending.
-- The repository now targets the standard public URL `http://<EC2_PUBLIC_IP>/`. This host-port change has not yet been deployed or validated on EC2. Port 80 must be allowed manually in the EC2 Security Group using the narrowest approved source; after successful port-80 validation, the prior public 5173 rule should be removed. No AWS resource was changed by the repository update.
+- The earlier mobile-browser screenshot at the former host port 5173 confirmed six visible response sections and `PROJ-908`; that evidence has been superseded by browser-driven validation against the production port-80 URL.
+- Headless Chrome loaded `http://44.201.26.241/` as a real React application, displayed all five MCP tools, showed and then removed the visible `Calling MCP tools...` state, rendered all seven response sections including a visible `SOURCES:` label, and displayed `PROJ-908` for `PROJ-1002`.
+- The same browser session submitted `PROJ-9999`, received a clean error without a traceback or internal path, remained usable, and then recovered with another successful `PROJ-1002` response.
+- Browser network/console/storage inspection found same-origin `/api/health` and `ws://44.201.26.241/ws` traffic, no calls to ports 8000 or 8001, no internal Docker hostname or LLM endpoint calls, no JavaScript runtime or console errors, and empty local storage, session storage, and cookies. The page separately loads Google Fonts over HTTPS; this is a font dependency, not an LLM call.
+- Headless Chrome checks at 1440x900 and 390x844 confirmed visible input/button controls and no horizontal document overflow; the mobile media query hid the sidebar as intended.
+- The standard public URL `http://44.201.26.241/` is deployed. EC2 `docker compose ps` showed `0.0.0.0:80->80/tcp`, `docker compose port frontend 80` returned `0.0.0.0:80`, Nginx returned HTTP 200, and `/api/health` was healthy with MCP connected.
+- Independent public port-80 checks from the corporate Codex workstation passed for the Nginx page and both built assets, `/api/health`, `/api/tools`, canonical `PROJ-1002` and additional `PROJ-1001` REST responses, and the Nginx WebSocket path. Both public `PROJ-1002` query paths returned all seven structured fields and `PROJ-908`; malformed WebSocket input, empty WebSocket query, invalid `PROJ-9999`, connection reuse, and ping/pong also passed.
+- Public REST negative tests passed: empty, missing, wrong-type, over-2,000-character, and malformed-JSON bodies returned 422; unsupported GET `/api/query` returned 405; whitespace-only, invalid-format, and unknown-ticket requests returned sanitized application failures without tracebacks, internal paths, or credential patterns.
+- External TCP probes found port 80 reachable and ports 5173, 8000, and 8001 closed or filtered. This proves the obsolete and internal/diagnostic ports were not reachable from this workstation, but does not replace direct inspection of the Security Group rule list.
+- One explicit EC2 `docker compose down` followed by `up -d` completed successfully, all three services were running after seven seconds, and the Nginx `/api/health` response was healthy with MCP connected. Additional cycles and safe log review remain pending before concluding that no startup race is reproducible.
+- Port 80 was allowed manually in the EC2 Security Group. Browser validation is now complete, so the prior public 5173 rule should be removed if it remains configured. Its exact Security Group rule state was not directly inspectable from the corporate workstation; no AWS resource was changed by Codex.
 
 **Mock Jira demonstration boundary**:
 - Jira data and Jira-oriented tools are intentionally mocked and read-only because organizational Jira access is unavailable.
@@ -323,13 +334,16 @@ Browser -> React/Zustand -> Nginx -> FastAPI -> LangGraph -> MCP client
 - The configured Gemini provider/model and runtime key successfully produced the EC2 REST and WebSocket structured responses without exposing the key.
 - CORS middleware does not enforce WebSocket origins; Phase 11 validates the supported same-origin Nginx route only.
 - Host port 8000 remains published for existing diagnostics. MCP port 8001 must remain internal.
-- The new host-port-80 Compose mapping requires manual EC2 deployment and browser/API/WebSocket regression validation before it can be accepted. Local Vite and direct-development CORS remain on `localhost:5173` and are intentionally unchanged.
+- The host-port-80 Compose mapping is deployed and browser/API/WebSocket-regression validated. Local Vite and direct-development CORS remain on `localhost:5173` and are intentionally unchanged. External probing found 5173 closed or filtered, but direct evidence that its Security Group rule was removed is still unavailable.
+- Only one of the three required cold-start cycles has been performed. Two additional cycles, including readiness timing and post-start page/tools/REST/WebSocket checks, are required before ruling out the possible MCP startup race.
+- Post-validation Docker logs have not been supplied or inspected. Crash/restart-loop/MCP-disconnect/5xx/traceback and secret-pattern log checks remain required on EC2.
+- `README.md` still contains older architecture prose referring to subprocess/stdio MCP and Python 3.11. The deployed implementation and this handoff correctly describe Python 3.12 and Streamable HTTP; the README inconsistency is documentation debt for final documentation work and is not evidence of a runtime regression.
 
 ### Phase 11 EC2 Validation Record and Remaining Runbook
 
 Use AWS Console Session Manager, Systems Manager Run Command, AWS CloudShell, or another authorized machine. Do not use `--no-verify-ssl`, do not widen security groups, and do not put secrets in Git or command arguments.
 
-The original host-port-5173 forms of steps 1–9 were executed successfully against `f56299f`. The commands below now target the proposed standard host port 80 and must be rerun after the port-mapping commit is deployed. Browser/log evidence in step 10 and repeated cold-start readiness validation in step 11 also remain required.
+The original host-port-5173 forms of steps 1–9 were executed successfully against `f56299f`. The port-80 forms were subsequently executed successfully against `04a6086`, including public REST, public WebSocket, and real-browser regression checks. Safe EC2 log review in step 10 and cold-start cycles 2 and 3 in step 11 are still required.
 
 1. Confirm and update the repository after an approved Phase 11 commit exists:
 
@@ -344,7 +358,7 @@ git branch --show-current
 git fetch origin main
 git log --oneline -10
 
-APPROVED_COMMIT=<approved-port-80-commit>
+APPROVED_COMMIT=04a6086dad9005b29b69ca84ff64b82a29b95095
 test "$(git rev-parse origin/main)" = "$APPROVED_COMMIT"
 git pull --ff-only origin main
 test "$(git rev-parse HEAD)" = "$APPROVED_COMMIT"
@@ -490,15 +504,15 @@ curl -sS -D - -o /dev/null -X OPTIONS \
 
 Expected: only `localhost:5173` receives `Access-Control-Allow-Origin`; the preflight permits POST and Content-Type; credentials are not allowed.
 
-10. Inspect safe logs and perform browser evidence collection:
+10. Inspect safe logs. Browser evidence collection has passed against the public port-80 URL:
 
 ```bash
 docker compose logs --since 10m --no-color frontend knowledge-agent mcp-server
 ```
 
-Capture `docker compose ps`, `/api/health`, `/api/tools`, REST JSON, WebSocket PASS output, internal-only MCP port evidence, and browser screenshots showing all seven rendered sections. Do not collect environment dumps or secrets.
+Review the output for crashes, restart loops, MCP connection failures, unhandled exceptions, unexpected 5xx responses, and credential patterns. Do not collect environment dumps or secrets.
 
-11. Conditional startup-readiness test, only during an approved validation window:
+11. Complete cold-start cycles 2 and 3 during an approved validation window. Cycle 1 passed:
 
 ```bash
 docker compose --env-file "$RUNTIME_ENV" down
@@ -514,7 +528,7 @@ docker compose ps
 
 Repeat cold startup sufficiently to determine whether FastAPI can remain degraded after MCP starts. Do not add healthchecks/readiness unless this failure is actually reproduced.
 
-### Phase 11 Acceptance Status at `f56299f`
+### Phase 11 Acceptance Status at `04a6086`
 
 - **PASS** — CORS policy is intentional, configurable, and tested for allowed/disallowed origins and preflight behavior.
 - **PASS** — Frontend Node 22.22.2 production build and all 6 Vitest tests.
@@ -523,11 +537,50 @@ Repeat cold startup sufficiently to determine whether FastAPI can remain degrade
 - **PASS** — Docker DNS/TCP connectivity to internal-only MCP port 8001, with no host binding.
 - **PASS** — Real configured-LLM `PROJ-1002` REST and WebSocket flows through Nginx, all seven structured fields, and deterministic `PROJ-908` match.
 - **PASS** — Runtime secret file remained outside Git with restrictive permissions and was not printed.
-- **PARTIAL PASS** — Mobile-browser evidence confirms the live React/Nginx page, MCP tool list, successful structured `PROJ-1002` rendering, six visible response sections, and `PROJ-908`. Sources visibility, loading transition, invalid-query/error state, browser network route, and browser credential-exposure inspection remain pending.
-- **PENDING** — Repeated `docker compose down`/`up -d` cold-start readiness checks and safe post-test log review.
-- **PENDING** — Deploy and validate the new standard HTTP mapping (`EC2 host 80` -> `frontend container 80`), including browser, `/api`, and `/ws`; then remove the obsolete public Security Group rule for 5173.
+- **PASS** — Headless Chrome against `http://44.201.26.241/` confirmed a non-blank React UI, five tools, visible loading state, all seven sections including Sources, clean invalid-ticket handling, successful recovery, no runtime/console errors, safe browser storage, and desktop/mobile usability.
+- **PASS** — Browser traffic used same-origin `/api` and `/ws`; it did not call ports 8000/8001, internal container names, Gemini, or OpenAI. High-confidence secret scans of public responses and built frontend assets were clean.
+- **PARTIAL** — One `docker compose down`/`up -d` cold-start cycle returned to healthy MCP-backed service and the subsequently exercised public page/REST/WebSocket/browser flows passed. Required cycles 2 and 3, readiness timing, and per-cycle evidence remain outstanding.
+- **PASS** — Standard HTTP mapping (`EC2 host 80` -> `frontend container 80`) is deployed; public page, `/api/health`, `/api/tools`, canonical REST, and `/ws` checks passed.
+- **PARTIAL** — External probes show 80 open and 5173, 8000, and 8001 closed or filtered. Direct Security Group rule inspection is still needed to confirm the obsolete 5173 rule is absent.
+- **NOT TESTABLE** — EC2 post-validation Docker log review cannot be performed from this workstation and no log output was supplied.
 
-**Phase 11 completion status**: NOT COMPLETE. All automated EC2 integration paths executed so far passed, but browser interaction and explicit repeated cold-start/log validation remain outstanding. Phase 12 must not start.
+### Phase 11 Final Validation Matrix
+
+| Area | Requirement / test | Result | Evidence / notes |
+|---|---|---|---|
+| Repository | Git baseline and synchronization | PASS | `main`, HEAD and `origin/main` are `04a6086dad9005b29b69ca84ff64b82a29b95095`; only this handoff evidence file is modified. |
+| Repository | Knowledge-agent tests | PASS | Final workstation run: 31 passed, 2 existing Starlette deprecation warnings. |
+| Repository | MCP tests | PASS | Final workstation run: 11 passed. |
+| Repository | Frontend Vitest | PASS | EC2 Node 22.22.2 build stage: 3 files and 6 tests passed; the workstation command is not runnable because its incomplete Node 20 install has no `vitest`. |
+| Repository | TypeScript and frontend production build | PASS | EC2 Node 22.22.2 Docker build compiled TypeScript and transformed 514 Vite modules successfully; workstation `tsc` is unavailable. |
+| Architecture | Mock Jira is accessed only through MCP | PASS | Static search found no `MockJiraRepository` reference in `knowledge-agent`; live tool discovery and query flows used MCP. |
+| Architecture | LangGraph and structured output | PASS | Static inspection shows `StateGraph` workflow and structured LLM output; tests and live responses validated all seven fields. |
+| Architecture | MCP Streamable HTTP | PASS | Client uses `streamable_http_client`; server exposes its Streamable HTTP application at `/mcp`; live Docker DNS/TCP test passed. |
+| Public browser | Nginx page, React UI, and five tools | PASS | Headless Chrome loaded the public port-80 URL with no blank page or runtime/console errors and displayed all five tools. |
+| Public browser | Loading state and final rendering | PASS | `Calling MCP tools...` became visible and was removed after the final response. |
+| Public browser | Seven sections and Sources | PASS | DOM inspection found Ticket Summary, What We Know, Similar Historical Tickets, Previous Resolution, Recommended Investigation, Missing Information, and visible `SOURCES:`. |
+| Public browser | Invalid ticket and recovery | PASS | `PROJ-9999` produced a sanitized visible error; input remained usable and a subsequent `PROJ-1002` query succeeded. |
+| Public browser | Desktop/mobile responsiveness | PASS | 1440x900 and 390x844 checks found visible controls and no horizontal document overflow; mobile sidebar behavior passed. |
+| Public REST | Health and tools through public Nginx | PASS | Healthy, MCP connected, version present, and exactly five expected tools. |
+| Public REST | Canonical `PROJ-1002` | PASS | Success true, all seven fields, useful content, and deterministic `PROJ-908`. |
+| Public REST | Additional valid query | PASS | `PROJ-1001` succeeded through public Nginx. |
+| Public REST | Negative input matrix | PASS | Empty/missing/type/length/malformed JSON returned 422; unsupported method returned 405; whitespace/invalid/unknown tickets returned clean application failures. |
+| Public WebSocket | Public Nginx `/ws` happy path | PASS | Connection, thinking, final success, seven fields, and `PROJ-908` passed at `ws://44.201.26.241/ws`. |
+| Public WebSocket | Error handling and connection reuse | PASS | Malformed JSON, empty query, invalid `PROJ-9999`, ping/pong, and valid-query recovery all passed without closing the connection. |
+| Docker/EC2 | Compose build/start and port mappings | PASS | Build/force-recreate passed; frontend is host 80 -> container 80, backend retains diagnostic host 8000, and MCP has no host binding. |
+| MCP security | Internal DNS/TCP and public isolation | PASS | `knowledge-agent` reached `mcp-server:8001`; `PortBindings` was `{}`; external port 8001 probe was closed or filtered. |
+| Network security | Public port exposure | PASS | From the corporate workstation, 80 was open while 5173, 8000, and 8001 were closed or filtered. |
+| Security Group | Exact rule-list inspection | NOT TESTABLE | Port 80 was manually enabled, but this workstation cannot inspect AWS; confirm the obsolete 5173 rule is removed and no unnecessary 8000/8001 rule exists. |
+| Browser security | Route, console, storage, and frontend secret checks | PASS | Same-origin `/api` and `/ws`, no backend/MCP/LLM direct calls, no runtime/console error, empty browser storage/cookies, and clean response/asset pattern scans. Google Fonts is the only observed external application dependency. |
+| Repository security | Tracked/untracked secret artifacts | PASS | No runtime `.env`, `runtime.env`, `cmdId`, or `b64` artifact; no high-confidence tracked key/private-key pattern; no frontend or MCP LLM credential reference. |
+| Runtime secrets | EC2 runtime file handling | PASS | Previously verified outside Git, owned by `ubuntu`, mode 600, contents not printed; only the backend receives configured LLM variables. |
+| CORS | Allowed/disallowed/preflight/credentials | PASS | Supported localhost:5173 origin allowed, legacy localhost:3000 not allowed, POST/Content-Type preflight passed, credentials disabled. |
+| Cold start | Cycle 1 | PASS | Compose down/up succeeded; all services were running after approximately seven seconds and `/api/health` was healthy with MCP connected. |
+| Cold start | Cycles 2 and 3 | NOT TESTABLE | Required EC2 operations were not supplied and cannot be initiated from this workstation. |
+| Logs | Post-validation service log review | NOT TESTABLE | EC2 logs were not supplied; crashes, restart loops, MCP disconnects, unexpected 5xx, tracebacks, and credential patterns still require safe review. |
+| Documentation | README architecture accuracy | PARTIAL | Quick-start port 80 is correct, but older architecture/tech-stack prose still says subprocess/stdio MCP and Python 3.11; implementation and handoff use Streamable HTTP and Python 3.12. |
+
+**Phase 11 completion status**: **NOT COMPLETE**. No public application-path failure remains in the executed evidence. Completion is blocked only by cold-start cycles 2 and 3 with per-cycle page/tools/REST/WebSocket evidence, safe EC2 log review, and direct confirmation of the final Security Group rule set. Phase 12 must not start.
 
 ## 10. Continuation Instructions for Future Agents
 **CONTINUATION INSTRUCTIONS FOR FUTURE AGENTS**
