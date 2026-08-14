@@ -1,11 +1,12 @@
 import { useChatStore } from '../store/chatStore'
 
 export function Sidebar() {
-  const { health, wsConnected, clearMessages } = useChatStore()
+  const { health, connectionState, clearMessages } = useChatStore()
 
   const getStatusInfo = () => {
     if (!health) return { label: 'Connecting…', className: 'loading' }
-    if (health.status === 'healthy' && wsConnected) return { label: 'Connected', className: 'connected' }
+    if (health.status === 'healthy' && connectionState === 'connected') return { label: 'Connected', className: 'connected' }
+    if (connectionState === 'reconnecting') return { label: 'Reconnecting…', className: 'loading' }
     if (health.status === 'healthy') return { label: 'Degraded', className: 'loading' }
     return { label: 'Disconnected', className: 'disconnected' }
   }
@@ -34,21 +35,23 @@ export function Sidebar() {
       {/* Nav */}
       <nav className="sidebar-nav">
         <div className="nav-section-title">Navigation</div>
-        <button className="nav-item active">
+        <div className="nav-item active" style={{ cursor: 'default' }}>
           <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
           Chat
-        </button>
+        </div>
 
-        <div className="nav-section-title" style={{ marginTop: '16px' }}>Tools</div>
+        <div className="nav-section-title" style={{ marginTop: '16px' }}>Jira Capabilities</div>
 
         {health?.available_tools.map((tool) => (
           <div key={tool} className="nav-item" style={{ cursor: 'default' }}>
             <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
             </svg>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}>{tool}()</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}>
+              {tool.replaceAll('_', ' ')}
+            </span>
           </div>
         ))}
 
@@ -59,7 +62,7 @@ export function Sidebar() {
               <line x1="12" y1="8" x2="12" y2="12" />
               <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
-            No tools loaded
+            No Jira capabilities loaded
           </div>
         )}
 
@@ -82,7 +85,7 @@ export function Sidebar() {
 
         {health && (
           <div style={{ marginTop: '8px', fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>
-            v{health.version} · {health.available_tools.length} tools
+            v{health.version} · {health.available_tools.length} Jira tools · {health.llm.provider}/{health.llm.model}
           </div>
         )}
       </div>

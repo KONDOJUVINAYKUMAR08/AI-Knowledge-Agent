@@ -1,7 +1,10 @@
-import pytest
 from unittest.mock import patch
+
+import pytest
+
 from src.agent.llm_factory import create_llm
 from src.core.config import Settings
+
 
 @patch("langchain_openai.ChatOpenAI")
 def test_create_llm_openai_success(mock_openai):
@@ -10,7 +13,13 @@ def test_create_llm_openai_success(mock_openai):
     llm = create_llm(settings)
     
     assert llm is not None
-    mock_openai.assert_called_once_with(model="gpt-4o-mini", api_key="sk-test", temperature=0)
+    mock_openai.assert_called_once_with(
+        model="gpt-4o-mini",
+        api_key="sk-test",
+        temperature=0,
+        timeout=45.0,
+        max_retries=0,
+    )
 
 @patch("langchain_google_genai.ChatGoogleGenerativeAI")
 def test_create_llm_gemini_success(mock_gemini):
@@ -19,7 +28,13 @@ def test_create_llm_gemini_success(mock_gemini):
     llm = create_llm(settings)
     
     assert llm is not None
-    mock_gemini.assert_called_once_with(model="gemini-3.5-flash", google_api_key="AIza-test", temperature=0)
+    mock_gemini.assert_called_once_with(
+        model="gemini-3.5-flash",
+        google_api_key="AIza-test",
+        temperature=0,
+        request_timeout=45.0,
+        retries=0,
+    )
 
 def test_create_llm_openai_missing_key():
     settings = Settings(llm_provider="openai", llm_model="gpt-4o-mini", openai_api_key=None, google_api_key=None)

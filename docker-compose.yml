@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   mcp-server:
     build:
@@ -9,6 +7,11 @@ services:
     environment:
       - LOG_LEVEL=INFO
       - LOG_FORMAT=json
+      - JIRA_PROVIDER=${JIRA_PROVIDER:-mock}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
   knowledge-agent:
@@ -17,7 +20,7 @@ services:
       dockerfile: Dockerfile
     container_name: knowledge-agent-api
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - API_HOST=0.0.0.0
       - API_PORT=8000
@@ -26,10 +29,19 @@ services:
       - LOG_FORMAT=json
       - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
       - LLM_MODEL=${LLM_MODEL:-gemini-3.5-flash}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - LLM_TIMEOUT_SECONDS=${LLM_TIMEOUT_SECONDS:-45}
+      - LLM_MAX_RETRIES=${LLM_MAX_RETRIES:-2}
+      - LLM_RETRY_BACKOFF_SECONDS=${LLM_RETRY_BACKOFF_SECONDS:-0.5}
+      - AGENT_TOOL_TIMEOUT_SECONDS=${AGENT_TOOL_TIMEOUT_SECONDS:-30}
+      - AGENT_QUERY_TIMEOUT_SECONDS=${AGENT_QUERY_TIMEOUT_SECONDS:-90}
     depends_on:
       - mcp-server
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
   frontend:
@@ -41,4 +53,6 @@ services:
       - "80:80"
     depends_on:
       - knowledge-agent
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped

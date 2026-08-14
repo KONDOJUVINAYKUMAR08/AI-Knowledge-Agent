@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO")
     log_format: str = Field(default="json")  # "json" | "console"
 
-    # Mock data
-    mock_ticket_response_delay_ms: int = Field(default=0)
+    # Jira provider
+    jira_provider: str = Field(default="mock")
 
 
 @lru_cache(maxsize=1)

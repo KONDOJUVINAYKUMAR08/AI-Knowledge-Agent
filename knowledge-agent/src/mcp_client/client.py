@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any
+from typing import Any, Self
+from urllib.parse import urlsplit
 
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
@@ -21,6 +22,15 @@ from src.core.config import get_settings
 from src.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _safe_endpoint(url: str) -> str:
+    """Return an endpoint description without credentials or query parameters."""
+
+    parsed = urlsplit(url)
+    host = parsed.hostname or "unknown-host"
+    port = f":{parsed.port}" if parsed.port else ""
+    return f"{parsed.scheme}://{host}{port}{parsed.path}"
 
 
 class MCPClientError(Exception):
@@ -75,7 +85,7 @@ class MCPClient:
         server_url = self._settings.mcp_server_url
         logger.info(
             "mcp_client.connecting",
-            url=server_url,
+            endpoint=_safe_endpoint(server_url),
         )
 
         try:
@@ -94,9 +104,11 @@ class MCPClient:
                 tools=list(self._available_tools.keys()),
             )
         except Exception as exc:
-            logger.exception("mcp_client.connection_failed", error=str(exc))
+            logger.error(
+                "mcp_client.connection_failed", error_type=type(exc).__name__
+            )
             await self._locked_disconnect()
-            raise MCPClientError(f"Failed to connect to MCP server: {exc}") from exc
+            raise MCPClientError("Failed to connect to the MCP server.") from exc
 
     async def disconnect(self) -> None:
         """Terminate the MCP session."""
@@ -113,8 +125,10 @@ class MCPClient:
                 await self._session_cm.__aexit__(None, None, None)
             if self._http_cm:
                 await self._http_cm.__aexit__(None, None, None)
-        except Exception as exc:
-            logger.warning("mcp_client.disconnect_error", error=str(exc))
+        except Exception as exc:  # noqa: BLE001 - best-effort transport cleanup
+            logger.warning(
+                "mcp_client.disconnect_error", error_type=type(exc).__name__
+            )
         finally:
             self._session = None
             self._session_cm = None
@@ -145,13 +159,18 @@ class MCPClient:
         try:
             # We already refreshed during connect, but this forces a fresh list
             # if we were already connected.
-            await self._refresh_tools()
+            await asyncio.wait_for(
+                self._refresh_tools(),
+                timeout=self._settings.agent_tool_timeout_seconds,
+            )
             return self.available_tools
         except Exception as exc:
-            logger.exception("mcp_client.list_tools_failed", error=str(exc))
+            logger.error(
+                "mcp_client.list_tools_failed", error_type=type(exc).__name__
+            )
             # Transport failure
             await self.disconnect()
-            raise MCPClientError(f"Failed to list tools: {exc}") from exc
+            raise MCPClientError("Failed to list MCP tools.") from exc
 
     async def call_tool(self, tool_name: str, arguments: dict[str, Any] | None = None) -> Any:
         """
@@ -177,7 +196,11 @@ class MCPClient:
             )
 
         args = arguments or {}
-        logger.info("mcp_client.calling_tool", tool=tool_name, args=args)
+        logger.info(
+            "mcp_client.calling_tool",
+            tool=tool_name,
+            argument_names=sorted(args),
+        )
         
         # We need self._session for type checking/linting inside the try block,
         # but _ensure_connected should guarantee it's not None.
@@ -190,7 +213,7 @@ class MCPClient:
                 session.call_tool(tool_name, args),
                 timeout=self._settings.agent_tool_timeout_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("mcp_client.tool_call_timeout", tool=tool_name)
             # Timeout is a transport/session failure. Disconnect.
             await self.disconnect()
@@ -198,36 +221,52 @@ class MCPClient:
                 f"Tool '{tool_name}' timed out after {self._settings.agent_tool_timeout_seconds}s"
             )
         except Exception as exc:
-            logger.exception("mcp_client.transport_call_failed", tool=tool_name, error=str(exc))
+            logger.error(
+                "mcp_client.transport_call_failed",
+                tool=tool_name,
+                error_type=type(exc).__name__,
+            )
             # Any other exception here is a transport error (e.g. EOF, connection reset)
             await self.disconnect()
-            raise MCPClientError(f"Transport/Session failed calling '{tool_name}': {exc}") from exc
+            raise MCPClientError(f"Transport failure while calling '{tool_name}'.") from exc
 
         is_err = getattr(result, "isError", getattr(result, "is_error", False))
         if is_err:
-            error_msg = str(result.content)
-            logger.error("mcp_client.tool_returned_error", tool=tool_name, error=error_msg)
+            logger.error("mcp_client.tool_returned_error", tool=tool_name)
             # Tool logic error. Do NOT disconnect.
-            raise ToolInvocationError(f"Tool '{tool_name}' returned error: {error_msg}")
+            raise ToolInvocationError(f"Tool '{tool_name}' returned an error.")
+
+        structured = getattr(
+            result,
+            "structuredContent",
+            getattr(result, "structured_content", None),
+        )
+        if isinstance(structured, (dict, list, str, int, float, bool)):
+            logger.info("mcp_client.tool_success", tool=tool_name)
+            return structured
 
         # Extract text content from MCP response
         content = result.content
-        if content and len(content) > 0:
-            first = content[0]
-            if hasattr(first, "text"):
+        if content:
+            parsed_content: list[Any] = []
+            for item in content:
+                if not hasattr(item, "text"):
+                    continue
                 try:
-                    parsed = json.loads(first.text)
-                    logger.info("mcp_client.tool_success", tool=tool_name)
-                    return parsed
+                    parsed_content.append(json.loads(item.text))
                 except (json.JSONDecodeError, TypeError):
-                    return first.text
+                    parsed_content.append(item.text)
+
+            if parsed_content:
+                logger.info("mcp_client.tool_success", tool=tool_name)
+                return parsed_content[0] if len(parsed_content) == 1 else parsed_content
 
         return None
 
-    async def __aenter__(self) -> "MCPClient":
+    async def __aenter__(self) -> Self:
         await self.connect()
         return self
 
-    async def __aexit__(self, *args: Any) -> None:
+    async def __aexit__(self, *args: object) -> None:
         await self.disconnect()
 

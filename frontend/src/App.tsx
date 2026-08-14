@@ -5,11 +5,12 @@ import { ChatInput } from './components/ChatInput'
 import { useChatStore } from './store/chatStore'
 
 export default function App() {
-  const { initialize, isThinking, health } = useChatStore()
+  const { initialize, shutdown, isThinking, health } = useChatStore()
 
   useEffect(() => {
-    initialize()
-  }, [initialize])
+    void initialize()
+    return shutdown
+  }, [initialize, shutdown])
 
   const isDisabled = isThinking
 
@@ -23,7 +24,7 @@ export default function App() {
             <div className="chat-title">AI Knowledge Agent</div>
             <div className="chat-subtitle">
               {health?.mcp_connected
-                ? `${health.available_tools.length} tools available · Ask anything`
+                ? `${health.available_tools.length} Jira capabilities available · Ask about an operational incident`
                 : 'Connecting to MCP Server…'}
             </div>
           </div>

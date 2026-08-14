@@ -5,16 +5,13 @@ Initializes the MCPServer, registers all tool modules,
 and starts listening on Streamable HTTP transport.
 """
 
-import sys
 import uvicorn
-from starlette.applications import Starlette
-
 from mcp.server.mcpserver import MCPServer
 
 from src.core.config import get_settings
 from src.core.logging import configure_logging, get_logger
-from src.tools.general_tools import register_general_tools
-from src.tools.mock_jira_tools import register_mock_jira_tools
+from src.jira.factory import create_jira_repository
+from src.tools.jira_tools import register_jira_tools
 
 # Bootstrap logging before anything else
 configure_logging()
@@ -30,14 +27,14 @@ def create_server() -> MCPServer:
         version=settings.mcp_server_version,
     )
 
-    # Register all tool modules
-    register_general_tools(mcp)
-    register_mock_jira_tools(mcp)
+    repository = create_jira_repository(settings)
+    register_jira_tools(mcp, repository)
 
     logger.info(
         "mcp_server.initialized",
         name=settings.mcp_server_name,
         version=settings.mcp_server_version,
+        jira_provider=repository.provider_name,
     )
     return mcp
 

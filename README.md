@@ -1,70 +1,157 @@
 # AI Knowledge Agent for Jira
 
-> A production-grade AI Knowledge Agent using the Model Context Protocol (MCP) to communicate with external tools. Initially powered by mock tools, designed for drop-in replacement with real Jira and Confluence integrations.
+An operational knowledge assistant that helps junior engineers understand and investigate Jira incidents. The current Jira source is a deterministic, realistic in-memory repository; the application boundary is designed so a future real Jira repository can replace it without changing the agent or frontend.
+
+This repository is a production-oriented simulation, not a connection to organizational Jira. It does not directly inspect clusters, logs, metrics, databases, Kafka, Redis, DataPower, or cloud APIs.
 
 ## Architecture
 
+```text
+Browser
+  -> React / Zustand
+  -> Nginx (:80)
+       -> /api/* -> FastAPI (:8000)
+       -> /ws    -> FastAPI WebSocket (:8000)
+  -> LangGraph Knowledge Agent
+  -> MCP client
+  -> Streamable HTTP
+  -> MCP server (:8001, Docker-internal only)
+  -> JiraRepository
+  -> MockJiraRepository
 ```
-[React Frontend]  ←→  [Knowledge Agent API]  ←→  [MCP Client]  ←→  [MCP Server]  ←→  [Tools]
-                            (FastAPI)              (subprocess)      (stdio)         ├── hello()
-                                                                                     ├── current_time()
-                                                                                     └── get_mock_ticket()
+
+The Knowledge Agent never imports or accesses `MockJiraRepository`. Jira data is available to it only through MCP.
+
+## Supported capabilities
+
+The production-facing MCP tool set contains exactly three operational tools:
+
+- `get_ticket(ticket_key)` — retrieve a normalized Jira ticket.
+- `search_tickets(...)` — search by text, status, priority, issue type, service, environment, platform, cluster, labels, and components.
+- `find_similar_tickets(ticket_key)` — return deterministic resolved matches with scores, reasons, prior resolutions, and applicability guidance.
+
+Example requests:
+
+- `Get PROJ-1002`
+- `Find critical Kafka incidents`
+- `Find Redis incidents in production`
+- `Find similar incidents to PROJ-1002`
+- `Help me understand PROJ-1002`
+- `What can you help me with?`
+
+The canonical investigation remains `PROJ-1002`; `PROJ-908` is its deterministic top historical match.
+
+## Structured investigation response
+
+An investigation returns seven validated sections:
+
+1. Ticket Summary
+2. What We Know
+3. Similar Historical Tickets
+4. Previous Resolution
+5. Recommended Investigation
+6. Missing Information
+7. Sources
+
+The LLM receives only retrieved Jira evidence. Its cited ticket keys are checked against the retrieved current and historical tickets before a response is accepted.
+
+## Components and ports
+
+| Component | Responsibility | Published port |
+|---|---|---:|
+| `frontend/` | React UI and Nginx reverse proxy | `80` |
+| `knowledge-agent/` | FastAPI, LangGraph, LLM abstraction, MCP client | `127.0.0.1:8000` diagnostics only |
+| `mcp-server/` | Jira repository boundary and MCP tools | None (`8001` internal only) |
+
+The Vite development server uses port `5173`. It is not the production Docker entry point.
+
+## Docker quick start
+
+Keep runtime credentials outside the repository in a permission-restricted environment file:
+
+```text
+LLM_PROVIDER=gemini
+LLM_MODEL=gemini-3.5-flash
+GOOGLE_API_KEY=<configured outside Git>
 ```
 
-## Components
-
-| Component | Description | Port |
-|---|---|---|
-| `frontend/` | React + TypeScript chat UI | 80 (Docker host), 5173 (Vite development) |
-| `knowledge-agent/` | FastAPI backend + MCP Client | 8000 |
-| `mcp-server/` | MCP Server with mock tools | stdio |
-
-## Quick Start
-
-The production Docker Compose entry point is `http://localhost/` (host port 80 mapped to the frontend Nginx container on port 80). Port 5173 remains the Vite development-server port only.
+Then run:
 
 ```bash
-# 1. MCP Server
-cd mcp-server
-uv venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-uv pip install -e .
-python -m src.server.main
-
-# 2. Knowledge Agent
-cd knowledge-agent
-uv venv && source .venv/bin/activate
-uv pip install -e .
-cp .env.example .env
-uvicorn src.api.main:app --reload --port 8000
-
-# 3. Frontend
-cd frontend
-npm install
-cp .env.example .env
-npm run dev
+docker compose --env-file /secure/path/runtime.env config -q
+docker compose --env-file /secure/path/runtime.env build
+docker compose --env-file /secure/path/runtime.env up -d
+docker compose ps
 ```
 
-## Replacing Mock Tools with Real Jira
+Open `http://localhost/`. Verify:
 
-When Jira credentials are available, only `mcp-server/src/tools/jira_tools.py` needs to change. The Knowledge Agent, MCP Client, and Frontend remain untouched.
-
-## Tech Stack
-
-- **Backend**: Python 3.11, FastAPI, WebSockets, `mcp` SDK
-- **Frontend**: React 18, TypeScript, Vite, Zustand
-- **Protocol**: Model Context Protocol (MCP) over stdio transport
-- **Config**: python-dotenv, `.env` files per component
-- **Logging**: structlog (JSON structured)
-- **Testing**: pytest, pytest-asyncio, vitest
-
-## Project Structure
-
+```bash
+curl -fsS http://localhost/api/health
+curl -fsS http://localhost/api/tools
+curl -fsS -X POST http://localhost/api/query \
+  -H 'Content-Type: application/json' \
+  --data '{"query":"Help me understand PROJ-1002"}'
 ```
-knowledge-agent-poc/
-├── knowledge-agent/    # FastAPI AI Agent + MCP Client
-├── mcp-server/         # MCP Server + Tools
-├── frontend/           # React Chat UI
-├── shared/             # Shared Pydantic models
-├── docs/               # Architecture & setup docs
-└── docker-compose.yml
+
+See [docs/setup.md](docs/setup.md) for local development, WebSocket examples, tests, and configuration.
+
+## LLM providers
+
+Application logic is provider-neutral. Supported settings are:
+
+```text
+LLM_PROVIDER=gemini
+LLM_MODEL=gemini-3.5-flash
+GOOGLE_API_KEY=...
 ```
+
+or:
+
+```text
+LLM_PROVIDER=openai
+LLM_MODEL=<approved OpenAI model>
+OPENAI_API_KEY=...
+```
+
+Provider calls have explicit timeouts, application-managed retry/backoff, strict structured-output validation, and sanitized failure responses. Never place keys in frontend variables, source files, Git, or chat messages.
+
+## Real Jira migration path
+
+The provider-neutral contract is `mcp-server/src/jira/repository.py`. Real Jira integration should:
+
+1. Implement `RealJiraRepository` with `get_ticket`, `search_tickets`, and `find_similar_tickets`.
+2. Normalize Jira API/JQL results into the existing Jira domain models.
+3. Select the implementation in `mcp-server/src/jira/factory.py` through configuration.
+4. Configure Jira endpoint and credentials outside Git.
+
+MCP tools, the Knowledge Agent, REST/WebSocket contracts, and frontend should not need redesign.
+
+## Quality gates
+
+```bash
+# knowledge-agent
+python -m pytest -q -p no:cacheprovider
+ruff check --no-cache src tests
+
+# mcp-server
+python -m pytest -q -p no:cacheprovider
+ruff check --no-cache src tests
+
+# frontend (Node 22.22.2)
+npm ci
+npm test -- --run
+npm run build
+
+git diff --check
+```
+
+Current validation evidence and outstanding EC2 gates are maintained in [docs/PROJECT_HANDOFF.md](docs/PROJECT_HANDOFF.md).
+
+## Current limitations
+
+- Jira data is deterministic mock data; real Jira access is not implemented.
+- A configured provider credential is required for investigation responses.
+- Authentication, TLS termination, and enterprise authorization are deployment responsibilities not implemented in this POC.
+- Docker/frontend Node 22 validation must be completed for the current operational refactor before it can be declared production-ready.
+- The remaining EC2 cold-start/log/Security Group evidence must not be inferred from local testing.

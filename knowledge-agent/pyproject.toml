@@ -1,7 +1,7 @@
 [project]
 name = "knowledge-agent"
 version = "0.1.0"
-description = "AI Knowledge Agent with FastAPI backend and MCP Client"
+description = "Operational Jira Knowledge Agent with FastAPI, LangGraph, and MCP"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.111.0",

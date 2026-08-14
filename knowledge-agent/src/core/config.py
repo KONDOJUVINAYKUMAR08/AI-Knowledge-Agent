@@ -3,7 +3,6 @@ Knowledge Agent configuration.
 """
 
 from functools import lru_cache
-from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -36,10 +35,13 @@ class Settings(BaseSettings):
     llm_model: str = Field(default="gemini-3.5-flash")
     openai_api_key: str | None = Field(default=None)
     google_api_key: str | None = Field(default=None)
+    llm_timeout_seconds: float = Field(default=45.0, gt=0)
+    llm_max_retries: int = Field(default=2, ge=0, le=5)
+    llm_retry_backoff_seconds: float = Field(default=0.5, ge=0, le=10)
 
     # Agent
-    agent_max_tool_retries: int = Field(default=3)
     agent_tool_timeout_seconds: int = Field(default=30)
+    agent_query_timeout_seconds: int = Field(default=90, ge=1, le=300)
 
     # Logging
     log_level: str = Field(default="INFO")

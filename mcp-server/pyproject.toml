@@ -1,7 +1,7 @@
 [project]
 name = "mcp-server"
 version = "0.1.0"
-description = "MCP Server with mock tools for the AI Knowledge Agent POC"
+description = "Operational Jira repository tools exposed over MCP Streamable HTTP"
 requires-python = ">=3.11"
 dependencies = [
     "mcp>=1.0.0",
@@ -9,12 +9,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
-    "fastapi>=0.100.0",
-    "uvicorn>=0.23.0",
-    "starlette>=0.30.0",
-    "httpx>=0.24.0",
-    "httpx2>=2.5.0",
-    "sse-starlette>=1.6.5"
+    "uvicorn>=0.23.0"
 ]
 
 [project.optional-dependencies]

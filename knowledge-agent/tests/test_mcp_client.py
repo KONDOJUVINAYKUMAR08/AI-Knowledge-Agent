@@ -1,9 +1,11 @@
 import asyncio
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from mcp.types import Tool
+
 from src.mcp_client.client import MCPClient, MCPClientError, ToolInvocationError
+
 
 @pytest.fixture
 def mock_mcp_session():
@@ -47,7 +49,7 @@ async def test_successful_mcp_tool_call(mock_mcp_session, mock_streamable, mock_
         
         mock_mcp_session.call_tool.return_value = mock_result
         
-        res = await client.call_tool("get_ticket", {"ticket_id": "PROJ-1002"})
+        res = await client.call_tool("get_ticket", {"ticket_key": "PROJ-1002"})
         assert res == {"success": True}
 
 
@@ -66,7 +68,7 @@ async def test_tool_returning_iserror_true(mock_mcp_session, mock_streamable, mo
         
         mock_mcp_session.call_tool.return_value = mock_result
         
-        with pytest.raises(ToolInvocationError, match="Mock tool logic error"):
+        with pytest.raises(ToolInvocationError, match="returned an error"):
             await client.call_tool("get_ticket", {})
             
         # Should not disconnect on tool error
@@ -90,7 +92,7 @@ async def test_timeout_transport_failure(mock_mcp_session, mock_streamable, mock
         client = MCPClient()
         await client.connect()
         
-        mock_mcp_session.call_tool.side_effect = asyncio.TimeoutError("Timeout")
+        mock_mcp_session.call_tool.side_effect = TimeoutError("Timeout")
         
         with pytest.raises(MCPClientError, match="timed out"):
             await client.call_tool("get_ticket", {})
@@ -110,7 +112,7 @@ async def test_reconnect_after_failure(mock_mcp_session, mock_streamable, mock_s
         
         # Force a transport disconnect
         mock_mcp_session.call_tool.side_effect = Exception("Transport drop")
-        with pytest.raises(MCPClientError, match="Transport/Session failed"):
+        with pytest.raises(MCPClientError, match="Transport failure"):
             await client.call_tool("get_ticket", {})
             
         assert not client.is_connected
@@ -122,7 +124,7 @@ async def test_reconnect_after_failure(mock_mcp_session, mock_streamable, mock_s
         mock_result.content = []
         mock_mcp_session.call_tool.return_value = mock_result
         
-        res = await client.call_tool("get_ticket", {})
+        await client.call_tool("get_ticket", {})
         assert client.is_connected
 
 

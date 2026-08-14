@@ -1,32 +1,42 @@
 import { useEffect, useRef } from 'react'
 import { useChatStore } from '../store/chatStore'
 import { AgentResponseRenderer } from './AgentResponseRenderer'
-import { formatDistanceToNow } from 'date-fns'
+
+function formatRelativeTime(timestamp: Date): string {
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - timestamp.getTime()) / 1000))
+  if (elapsedSeconds < 5) return 'just now'
+  if (elapsedSeconds < 60) return `${elapsedSeconds} seconds ago`
+  const elapsedMinutes = Math.floor(elapsedSeconds / 60)
+  if (elapsedMinutes < 60) return `${elapsedMinutes} minute${elapsedMinutes === 1 ? '' : 's'} ago`
+  const elapsedHours = Math.floor(elapsedMinutes / 60)
+  if (elapsedHours < 24) return `${elapsedHours} hour${elapsedHours === 1 ? '' : 's'} ago`
+  return timestamp.toLocaleDateString()
+}
 
 const EXAMPLE_CARDS = [
   {
     icon: '🎫',
-    title: 'Fetch a Ticket',
-    desc: 'Get full details for a Jira ticket',
-    query: 'Show me PROJ-1001',
+    title: 'Investigate a Ticket',
+    desc: 'Understand facts, history, and next investigation steps',
+    query: 'Help me understand PROJ-1002',
   },
   {
     icon: '🔍',
-    title: 'Search Issues',
-    desc: 'Find tickets by status, priority, or keyword',
-    query: 'Find all critical bugs',
+    title: 'Search Incidents',
+    desc: 'Find operational incidents by platform and priority',
+    query: 'Find critical Kafka incidents',
   },
   {
     icon: '📊',
-    title: 'Project Overview',
-    desc: 'Get team stats and project summary',
-    query: 'Show project overview',
+    title: 'Find Redis Incidents',
+    desc: 'Search production incidents for a specific platform',
+    query: 'Find Redis incidents in production',
   },
   {
     icon: '🛠️',
-    title: 'List Tools',
-    desc: 'See all available MCP tools',
-    query: 'What tools are available?',
+    title: 'Historical Matches',
+    desc: 'Find resolved incidents similar to a Jira ticket',
+    query: 'Find similar incidents to PROJ-1002',
   },
 ]
 
@@ -52,8 +62,8 @@ export function ChatMessages() {
           <div>
             <h1 className="welcome-title">Knowledge Agent</h1>
             <p className="welcome-subtitle">
-              Your AI-powered interface to Jira and Confluence, connected via the Model Context Protocol.
-              Ask questions naturally — the agent handles the rest.
+              Your AI-powered interface to operational Jira knowledge, connected through the Model Context Protocol.
+              Retrieve tickets, search incidents, and investigate historical resolutions.
             </p>
           </div>
           <div className="example-queries">
@@ -148,7 +158,7 @@ export function ChatMessages() {
               <div className="content" style={{ flex: 1, minWidth: 0 }}>
                 {msg.response && <AgentResponseRenderer response={msg.response} />}
                 <div style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)', marginTop: '8px' }}>
-                  {formatDistanceToNow(msg.timestamp, { addSuffix: true })}
+                  {formatRelativeTime(msg.timestamp)}
                 </div>
               </div>
             </div>

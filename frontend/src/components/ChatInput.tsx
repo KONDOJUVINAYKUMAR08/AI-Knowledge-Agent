@@ -6,12 +6,12 @@ interface Props {
 }
 
 const EXAMPLE_QUERIES = [
-  'Show me PROJ-1001',
-  'Find critical bugs',
-  'What time is it?',
-  'Search in progress tickets',
-  'Project overview',
-  'List tools',
+  'Help me understand PROJ-1002',
+  'Get PROJ-1001',
+  'Find critical Kafka incidents',
+  'Find Redis incidents in production',
+  'Find similar incidents to PROJ-1002',
+  'What can you help me with?',
 ]
 
 export function ChatInput({ disabled = false }: Props) {
@@ -55,7 +55,9 @@ export function ChatInput({ disabled = false }: Props) {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask about a Jira ticket, search issues, get project stats… (Enter to send)"
+          placeholder="Investigate a Jira ticket or search operational incidents… (Enter to send)"
+          aria-label="Operational Jira query"
+          maxLength={2000}
           rows={1}
           disabled={disabled}
         />
@@ -64,6 +66,7 @@ export function ChatInput({ disabled = false }: Props) {
           onClick={handleSubmit}
           disabled={!value.trim() || disabled}
           title="Send (Enter)"
+          aria-label="Send query"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="22" y1="2" x2="11" y2="13" />

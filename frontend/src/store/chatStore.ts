@@ -1,119 +1,236 @@
-/**
- * Zustand store for global chat and agent state.
- */
+/** Zustand store for chat state, transport fallback, and lifecycle cleanup. */
 
 import { create } from 'zustand'
-import type { ChatMessage, HealthStatus } from '../types'
-import { AgentWebSocketService, AgentRestService } from '../services/agentService'
+import type { AgentQueryResponse, ChatMessage, HealthStatus } from '../types'
+import {
+  AgentRestService,
+  AgentWebSocketService,
+  isAgentQueryResponse,
+  type ConnectionState,
+  type WSMessage,
+} from '../services/agentService'
 
 const API_BASE = '/api'
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
+const QUERY_TIMEOUT_MS = 95_000
 
 interface ChatStore {
-  // State
   messages: ChatMessage[]
   health: HealthStatus | null
   wsConnected: boolean
+  connectionState: ConnectionState
   isThinking: boolean
-
-  // Services (singletons)
   wsService: AgentWebSocketService
   restService: AgentRestService
-
-  // Actions
   initialize: () => Promise<void>
+  shutdown: () => void
   sendMessage: (query: string) => Promise<void>
   clearMessages: () => void
   addExampleQuery: (query: string) => void
 }
 
+interface PendingQuery {
+  requestId: string
+  query: string
+  thinkingMessageId: string
+  timeout: ReturnType<typeof setTimeout>
+  fallbackStarted: boolean
+}
+
 const wsService = new AgentWebSocketService(WS_URL)
 const restService = new AgentRestService(API_BASE)
 
-let msgIdCounter = 0
-const nextId = () => `msg-${++msgIdCounter}-${Date.now()}`
+let messageCounter = 0
+let initialized = false
+let lifecycleGeneration = 0
+let pingInterval: ReturnType<typeof setInterval> | null = null
+let healthInterval: ReturnType<typeof setInterval> | null = null
+let removeMessageHandler: (() => void) | null = null
+let removeConnectionHandler: (() => void) | null = null
+let pendingQuery: PendingQuery | null = null
+
+const nextMessageId = () => `msg-${++messageCounter}-${Date.now()}`
+const nextRequestId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `request-${Date.now()}-${++messageCounter}`
+}
+
+const unknownHealth = (): HealthStatus => ({
+  status: 'unknown',
+  mcp_connected: false,
+  available_tools: [],
+  llm: { provider: 'unknown', model: 'unknown', configured: false },
+  version: '?',
+})
+
+function clearPendingQuery(): PendingQuery | null {
+  const pending = pendingQuery
+  if (pending) clearTimeout(pending.timeout)
+  pendingQuery = null
+  return pending
+}
+
+function finishWithResponse(response: AgentQueryResponse, requestId: string): void {
+  if (!pendingQuery || pendingQuery.requestId !== requestId) return
+  const pending = clearPendingQuery()
+  if (!pending) return
+  useChatStore.setState((state) => ({
+    messages: state.messages.map((message) =>
+      message.id === pending.thinkingMessageId
+        ? {
+            id: nextMessageId(),
+            role: 'agent',
+            status: 'done',
+            content: '',
+            response,
+            timestamp: new Date(),
+          }
+        : message,
+    ),
+    isThinking: false,
+  }))
+}
+
+function finishWithError(message: string, requestId?: string): void {
+  if (!pendingQuery || (requestId && pendingQuery.requestId !== requestId)) return
+  const pending = clearPendingQuery()
+  if (!pending) return
+  useChatStore.setState((state) => ({
+    messages: state.messages.map((item) =>
+      item.id === pending.thinkingMessageId
+        ? {
+            id: nextMessageId(),
+            role: 'agent',
+            status: 'error',
+            content: message,
+            timestamp: new Date(),
+          }
+        : item,
+    ),
+    isThinking: false,
+  }))
+}
+
+async function fallbackPendingToRest(): Promise<void> {
+  const pending = pendingQuery
+  if (!pending || pending.fallbackStarted) return
+  pending.fallbackStarted = true
+  clearTimeout(pending.timeout)
+  try {
+    const response = await restService.query(pending.query, pending.requestId)
+    finishWithResponse(response, pending.requestId)
+  } catch {
+    finishWithError('Unable to connect to the knowledge service. Please try again.', pending.requestId)
+  }
+}
+
+function handleWebSocketMessage(message: WSMessage): void {
+  const requestId = typeof message.payload.request_id === 'string'
+    ? message.payload.request_id
+    : undefined
+
+  if (message.type === 'thinking') {
+    if (pendingQuery && (!requestId || pendingQuery.requestId === requestId)) {
+      useChatStore.setState({ isThinking: true })
+    }
+    return
+  }
+  if (message.type === 'response' && requestId) {
+    if (!isAgentQueryResponse(message.payload)) {
+      finishWithError('The knowledge service returned an invalid response.', requestId)
+      return
+    }
+    finishWithResponse(message.payload, requestId)
+    return
+  }
+  if (message.type === 'error') {
+    const errorMessage = typeof message.payload.message === 'string'
+      ? message.payload.message
+      : 'The Knowledge Agent could not complete the request.'
+    finishWithError(errorMessage, requestId)
+  }
+}
+
+async function refreshHealth(generation: number): Promise<void> {
+  try {
+    const health = await restService.health()
+    if (initialized && generation === lifecycleGeneration) {
+      useChatStore.setState({ health })
+    }
+  } catch {
+    if (initialized && generation === lifecycleGeneration) {
+      useChatStore.setState({ health: unknownHealth() })
+    }
+  }
+}
 
 export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   health: null,
   wsConnected: false,
+  connectionState: 'disconnected',
   isThinking: false,
   wsService,
   restService,
 
   initialize: async () => {
-    // Fetch health
-    try {
-      const health = await restService.health()
-      set({ health })
-    } catch {
-      set({ health: { status: 'unknown', mcp_connected: false, available_tools: [], version: '?' } })
-    }
+    if (initialized) return
+    initialized = true
+    const generation = ++lifecycleGeneration
 
-    // Connect WebSocket
-    try {
-      await wsService.connect()
-      set({ wsConnected: true })
+    removeMessageHandler = wsService.addHandler(handleWebSocketMessage)
+    removeConnectionHandler = wsService.addConnectionHandler((connectionState) => {
+      if (!initialized || generation !== lifecycleGeneration) return
+      set({ connectionState, wsConnected: connectionState === 'connected' })
+      if (connectionState === 'disconnected' && pendingQuery) {
+        void fallbackPendingToRest()
+      }
+    })
 
-      wsService.addHandler((msg) => {
-        if (msg.type === 'thinking') {
-          set({ isThinking: true })
-        } else if (msg.type === 'response') {
-          const payload = msg.payload as Record<string, unknown>
-          set((state) => {
-            // Replace the last "thinking" message with the real response
-            const messages = state.messages.filter((m) => m.status !== 'thinking')
-            const agentMessage: ChatMessage = {
-              id: nextId(),
-              role: 'agent',
-              status: 'done',
-              content: '',
-              response: payload as unknown as ChatMessage['response'],
-              timestamp: new Date(),
-            }
-            return { messages: [...messages, agentMessage], isThinking: false }
-          })
-        } else if (msg.type === 'error') {
-          const payload = msg.payload as { message?: string }
-          set((state) => {
-            const messages = state.messages.filter((m) => m.status !== 'thinking')
-            return {
-              messages: [
-                ...messages,
-                {
-                  id: nextId(),
-                  role: 'agent',
-                  status: 'error',
-                  content: payload.message ?? 'An error occurred',
-                  timestamp: new Date(),
-                },
-              ],
-              isThinking: false,
-            }
-          })
-        }
-      })
-    } catch {
-      set({ wsConnected: false })
-    }
+    await Promise.allSettled([refreshHealth(generation), wsService.connect()])
+    if (!initialized || generation !== lifecycleGeneration) return
 
-    // Ping every 30s to keep connection alive
-    setInterval(() => {
-      if (wsService.isConnected) wsService.ping()
+    pingInterval = setInterval(() => {
+      if (wsService.isConnected) wsService.ping(nextRequestId())
     }, 30_000)
+    healthInterval = setInterval(() => {
+      void refreshHealth(generation)
+    }, 60_000)
   },
 
-  sendMessage: async (query: string) => {
-    const userMsg: ChatMessage = {
-      id: nextId(),
+  shutdown: () => {
+    initialized = false
+    lifecycleGeneration += 1
+    if (pingInterval) clearInterval(pingInterval)
+    if (healthInterval) clearInterval(healthInterval)
+    pingInterval = null
+    healthInterval = null
+    removeMessageHandler?.()
+    removeConnectionHandler?.()
+    removeMessageHandler = null
+    removeConnectionHandler = null
+    clearPendingQuery()
+    wsService.disconnect()
+    set({ wsConnected: false, connectionState: 'disconnected', isThinking: false })
+  },
+
+  sendMessage: async (rawQuery: string) => {
+    const query = rawQuery.trim()
+    if (!query || get().isThinking) return
+
+    const requestId = nextRequestId()
+    const thinkingMessageId = nextMessageId()
+    const userMessage: ChatMessage = {
+      id: nextMessageId(),
       role: 'user',
       status: 'done',
       content: query,
       timestamp: new Date(),
     }
-
-    const thinkingMsg: ChatMessage = {
-      id: nextId(),
+    const thinkingMessage: ChatMessage = {
+      id: thinkingMessageId,
       role: 'agent',
       status: 'thinking',
       content: '',
@@ -121,57 +238,39 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
 
     set((state) => ({
-      messages: [...state.messages, userMsg, thinkingMsg],
+      messages: [...state.messages, userMessage, thinkingMessage],
       isThinking: true,
     }))
 
-    try {
-      if (wsService.isConnected) {
-        wsService.sendQuery(query)
-      } else {
-        // Fallback to REST
-        const result = await restService.query(query)
-        set((state) => {
-          const messages = state.messages.filter((m) => m.status !== 'thinking')
-          return {
-            messages: [
-              ...messages,
-              {
-                id: nextId(),
-                role: 'agent',
-                status: 'done',
-                content: '',
-                response: result,
-                timestamp: new Date(),
-              },
-            ],
-            isThinking: false,
-          }
-        })
-      }
-    } catch (err) {
-      set((state) => {
-        const messages = state.messages.filter((m) => m.status !== 'thinking')
-        return {
-          messages: [
-            ...messages,
-            {
-              id: nextId(),
-              role: 'agent',
-              status: 'error',
-              content: err instanceof Error ? err.message : 'Failed to send query',
-              timestamp: new Date(),
-            },
-          ],
-          isThinking: false,
-        }
-      })
+    const timeout = setTimeout(() => {
+      void fallbackPendingToRest()
+    }, QUERY_TIMEOUT_MS)
+    pendingQuery = {
+      requestId,
+      query,
+      thinkingMessageId,
+      timeout,
+      fallbackStarted: false,
     }
+
+    if (wsService.isConnected) {
+      try {
+        wsService.sendQuery(query, requestId)
+        return
+      } catch {
+        await fallbackPendingToRest()
+        return
+      }
+    }
+    await fallbackPendingToRest()
   },
 
-  clearMessages: () => set({ messages: [] }),
+  clearMessages: () => {
+    clearPendingQuery()
+    set({ messages: [], isThinking: false })
+  },
 
   addExampleQuery: (query: string) => {
-    get().sendMessage(query)
+    void get().sendMessage(query)
   },
 }))

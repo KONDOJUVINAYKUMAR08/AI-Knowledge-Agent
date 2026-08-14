@@ -10,10 +10,12 @@ describe('AgentResponseRenderer', () => {
   it('renders error state correctly', () => {
     const errorResponse: AgentQueryResponse = {
       success: false,
+      error_code: 'test_error',
       error: 'Test error message',
       structured_response: null,
       timestamp: '2026-08-12T12:00:00Z',
-      processing_ms: 100
+      processing_ms: 100,
+      request_id: 'request-1'
     }
 
     render(<AgentResponseRenderer response={errorResponse} />)
@@ -23,10 +25,12 @@ describe('AgentResponseRenderer', () => {
   it('renders missing structured_response gracefully', () => {
     const missingResponse: AgentQueryResponse = {
       success: true,
+      error_code: null,
       error: null,
       structured_response: null,
       timestamp: '2026-08-12T12:00:00Z',
-      processing_ms: 100
+      processing_ms: 100,
+      request_id: 'request-2'
     }
 
     render(<AgentResponseRenderer response={missingResponse} />)
@@ -36,6 +40,7 @@ describe('AgentResponseRenderer', () => {
   it('renders full structured response correctly', () => {
     const fullResponse: AgentQueryResponse = {
       success: true,
+      error_code: null,
       error: null,
       structured_response: {
         ticket_summary: 'This is the summary',
@@ -47,7 +52,8 @@ describe('AgentResponseRenderer', () => {
         sources: ['PROJ-1002', 'PROJ-908']
       },
       timestamp: '2026-08-12T12:00:00Z',
-      processing_ms: 100
+      processing_ms: 100,
+      request_id: 'request-3'
     }
 
     render(<AgentResponseRenderer response={fullResponse} />)
@@ -77,6 +83,7 @@ describe('AgentResponseRenderer', () => {
   it('omits missing_information section when empty', () => {
     const responseWithoutMissingInfo: AgentQueryResponse = {
       success: true,
+      error_code: null,
       error: null,
       structured_response: {
         ticket_summary: 'This is the summary',
@@ -88,7 +95,8 @@ describe('AgentResponseRenderer', () => {
         sources: []
       },
       timestamp: '2026-08-12T12:00:00Z',
-      processing_ms: 100
+      processing_ms: 100,
+      request_id: 'request-4'
     }
 
     const { queryByText } = render(<AgentResponseRenderer response={responseWithoutMissingInfo} />)
