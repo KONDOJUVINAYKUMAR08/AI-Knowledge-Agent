@@ -12,7 +12,7 @@ from src.core.config import Settings
 from src.mcp_client.client import MCPClient, MCPClientError
 
 ALLOWED_ORIGIN = "http://localhost:5173"
-DISALLOWED_ORIGIN = "http://localhost:3000"
+DISALLOWED_ORIGIN = "http://disallowed.example.test"
 
 
 class DummyTool:
