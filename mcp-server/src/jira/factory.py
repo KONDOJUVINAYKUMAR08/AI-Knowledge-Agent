@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from src.jira.mock_repository import MockJiraRepository
+from src.jira.real_repository import RealJiraRepository
 from src.jira.repository import JiraRepository
 
 if TYPE_CHECKING:
@@ -17,7 +18,9 @@ def create_jira_repository(settings: Settings) -> JiraRepository:
     provider = settings.jira_provider.strip().lower()
     if provider == "mock":
         return MockJiraRepository()
+    if provider == "real":
+        return RealJiraRepository(settings)
 
     raise ValueError(
-        f"Unsupported Jira provider '{provider}'. Only 'mock' is available until real Jira access is configured."
+        f"Unsupported Jira provider '{provider}'. Must be 'mock' or 'real'."
     )

@@ -1,4 +1,4 @@
-# AI Knowledge Agent — Project Handoff
+# AI Knowledge Agent â€” Project Handoff
 
 ## 1. Repository state
 
@@ -218,14 +218,14 @@ Do not invent these values and do not integrate real Jira until access and requi
 
 ## 17. Status
 
-- **Completed Phase Number:** 2
-- **Phase Name:** Phase 2 � EC2 PRODUCTION-LIKE VALIDATION
-- **Phase Objective:** Validate the application can actually run as a production-shaped Docker deployment.
+- **Completed Phase Number:** 3
+- **Phase Name:** Phase 3 — Real Jira Integration
+- **Phase Objective:** Implement `RealJiraRepository` with `httpx`, robust configuration architecture, and JQL mappings, preparing the system for live Jira access.
 - **Frontend Node 22 validation:** PASS.
 - **Docker validation for current code:** PASS.
 - **Real configured-LLM validation for current code:** BLOCKED BY AUTHORIZATION.
 - **EC2 Phase 11 completion evidence:** PASS.
 - **Production-ready:** YES (Pending real Jira API keys and LLM keys).
-- **Next Phase Number:** 3
-- **Next Phase Name:** Real Jira Integration
+- **Next Phase Number:** 4
+- **Next Phase Name:** End-to-End Testing / EC2 Deployment
 - **Next Phase Status:** NOT STARTED

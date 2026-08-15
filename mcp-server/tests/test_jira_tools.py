@@ -101,5 +101,5 @@ async def test_find_similar_tool_returns_explainable_match(tools):
 def test_repository_factory_rejects_unconfigured_real_provider():
     settings = Settings(jira_provider="real")
 
-    with pytest.raises(ValueError, match="Only 'mock' is available"):
+    with pytest.raises(ValueError, match="Real Jira integration requires JIRA_BASE_URL"):
         create_jira_repository(settings)
