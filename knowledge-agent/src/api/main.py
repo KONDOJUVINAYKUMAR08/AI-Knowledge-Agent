@@ -52,6 +52,8 @@ def _llm_is_configured(app_settings: Settings) -> bool:
         return bool(app_settings.google_api_key)
     if provider == "openai":
         return bool(app_settings.openai_api_key)
+    if provider == "groq":
+        return bool(app_settings.groq_api_key)
     return False
 
 

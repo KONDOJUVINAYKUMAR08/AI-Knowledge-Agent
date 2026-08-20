@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     llm_model: str = Field(default="gemini-3.5-flash")
     openai_api_key: str | None = Field(default=None)
     google_api_key: str | None = Field(default=None)
+    groq_api_key: str | None = Field(default=None)
     llm_timeout_seconds: float = Field(default=45.0, gt=0)
     llm_max_retries: int = Field(default=2, ge=0, le=5)
     llm_retry_backoff_seconds: float = Field(default=0.5, ge=0, le=10)

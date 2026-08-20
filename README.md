@@ -114,6 +114,14 @@ LLM_MODEL=<approved OpenAI model>
 OPENAI_API_KEY=...
 ```
 
+or:
+
+```text
+LLM_PROVIDER=groq
+LLM_MODEL=<Groq chat model ID>
+GROQ_API_KEY=...
+```
+
 Provider calls have explicit timeouts, application-managed retry/backoff, strict structured-output validation, and sanitized failure responses. Never place keys in frontend variables, source files, Git, or chat messages.
 
 ## Real Jira migration path

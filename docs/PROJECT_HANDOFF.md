@@ -103,7 +103,7 @@ The grounding prompt separates known facts, recommendations, and missing informa
 ## 8. LLM abstraction
 
 - **Default provider/model:** Gemini / `gemini-3.5-flash`
-- **Alternative provider:** OpenAI through existing `ChatOpenAI` integration
+- **Alternative providers:** OpenAI through `ChatOpenAI` and Groq through `ChatGroq`
 - **Configuration:** `LLM_PROVIDER`, `LLM_MODEL`, and the selected backend-only API key
 - **Controls:** explicit per-attempt timeout, application-managed retry/backoff, overall query timeout, strict structured validation, grounding validation, and sanitized provider errors
 
@@ -230,3 +230,41 @@ Do not invent these values and do not integrate real Jira until access and requi
 - **Next Phase Number:** 5
 - **Next Phase Name:** Remaining Production/Security/CI/CD
 - **Next Phase Status:** NOT STARTED
+
+## 18. Groq provider extension (2026-08-20, uncommitted)
+
+Groq was added as a third backend-only LLM provider without changing the agent graph, Jira
+tool execution, prompts, response schema, grounding checks, retry policy, API contracts, or
+frontend behavior.
+
+Implementation details:
+
+- `create_groq_llm(settings)` constructs `ChatGroq` with the configured `LLM_MODEL`, so the
+  application does not maintain a hard-coded Groq model allowlist.
+- `GROQ_API_KEY` is loaded through backend settings and passed only to the Knowledge Agent
+  container.
+- Provider SDK retries remain disabled; existing application-managed retry/backoff remains
+  authoritative.
+- Health reporting now recognizes a configured Groq credential.
+- The dependency, environment example, Compose mapping, provider tests, README, and setup
+  documentation were updated.
+
+Validation performed:
+
+- Knowledge Agent tests: **56 passed**.
+- Knowledge Agent Ruff: **all checks passed**.
+- Real offline `ChatGroq` construction using `openai/gpt-oss-20b`: **passed**.
+- Existing `with_structured_output(AgentResponseSchema)` binding with `ChatGroq`: **passed**.
+- Compose YAML Groq environment assertion: **passed**.
+- Live Groq inference: **not run** because no real Groq API key was provided.
+- Docker validation: **not run** because Docker is unavailable in the local environment.
+- MCP validation was not required by the provider-only change. A best-effort run was blocked by
+  the missing `respx` development dependency and reported three pre-existing Ruff findings in
+  untouched MCP files.
+
+Security and repository state:
+
+- No real credential was added to source, documentation, tests, or tracked configuration.
+- Test keys are synthetic (`gsk-test`).
+- The change remains uncommitted; no commit or push was performed.
+- Phase 5 remains the next phase and was not started.

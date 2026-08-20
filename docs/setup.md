@@ -151,10 +151,11 @@ The server emits `pong`, `thinking`, `response`, and sanitized `error` events. B
 | Variable | Default | Purpose |
 |---|---|---|
 | `MCP_SERVER_URL` | `http://mcp-server:8001/mcp` | MCP Streamable HTTP endpoint |
-| `LLM_PROVIDER` | `gemini` | `gemini` or `openai` |
+| `LLM_PROVIDER` | `gemini` | `gemini`, `openai`, or `groq` |
 | `LLM_MODEL` | `gemini-3.5-flash` | Provider model name |
 | `GOOGLE_API_KEY` | unset | Gemini credential, backend only |
 | `OPENAI_API_KEY` | unset | OpenAI credential, backend only |
+| `GROQ_API_KEY` | unset | Groq credential, backend only |
 | `LLM_TIMEOUT_SECONDS` | `45` | Per-provider-attempt timeout |
 | `LLM_MAX_RETRIES` | `2` | Application-managed provider retries |
 | `LLM_RETRY_BACKOFF_SECONDS` | `0.5` | Initial exponential-backoff delay |

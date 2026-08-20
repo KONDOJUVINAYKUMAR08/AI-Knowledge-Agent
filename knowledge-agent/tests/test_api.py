@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from src.agent.agent import KnowledgeAgent
-from src.api.main import app, app_state
+from src.api.main import _llm_is_configured, app, app_state
 from src.core.config import Settings
 from src.mcp_client.client import MCPClient, MCPClientError
 
@@ -27,6 +27,26 @@ CORE_TOOLS = [
     DummyTool("search_tickets"),
     DummyTool("find_similar_tickets"),
 ]
+
+
+def test_groq_is_configured_when_key_is_present() -> None:
+    settings = Settings(
+        llm_provider="groq",
+        llm_model="openai/gpt-oss-20b",
+        groq_api_key="gsk-test",
+    )
+
+    assert _llm_is_configured(settings) is True
+
+
+def test_groq_is_not_configured_when_key_is_missing() -> None:
+    settings = Settings(
+        llm_provider="groq",
+        llm_model="openai/gpt-oss-20b",
+        groq_api_key=None,
+    )
+
+    assert _llm_is_configured(settings) is False
 
 
 def _structured_response():
