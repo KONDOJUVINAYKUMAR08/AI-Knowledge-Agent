@@ -231,7 +231,7 @@ Do not invent these values and do not integrate real Jira until access and requi
 - **Next Phase Name:** Remaining Production/Security/CI/CD
 - **Next Phase Status:** NOT STARTED
 
-## 18. Groq provider extension (2026-08-20, uncommitted)
+## 18. Groq provider extension (2026-08-20)
 
 Groq was added as a third backend-only LLM provider without changing the agent graph, Jira
 tool execution, prompts, response schema, grounding checks, retry policy, API contracts, or
@@ -266,5 +266,55 @@ Security and repository state:
 
 - No real credential was added to source, documentation, tests, or tracked configuration.
 - Test keys are synthetic (`gsk-test`).
-- The change remains uncommitted; no commit or push was performed.
+- The change was committed and synchronized at `dafb83db3a793eecbf06a6811ac6a62004b7e168`.
+- Phase 5 remains the next phase and was not started.
+
+## 19. Production-grade degraded investigation responses (2026-08-20, uncommitted)
+
+Objective:
+
+- Preserve useful, verified Jira output when an LLM investigation times out, the provider is
+  unavailable, or its structured response fails schema/grounding validation.
+- Render structured error evidence in the frontend instead of replacing it with a one-line error.
+
+Implementation:
+
+- Strengthened the investigation prompt to require the current ticket and highest-ranked
+  historical match in `sources` and prohibit Jira keys absent from retrieved evidence.
+- Added a deterministic seven-section investigation fallback assembled only from the already
+  retrieved current ticket and similarity matches.
+- Kept degraded requests unsuccessful with their original error code so API monitoring and HTTP
+  status behavior continue to expose provider/schema failures accurately.
+- Improved unsuccessful Jira-operation responses with a ticket-aware summary, actionable retry
+  guidance, explicit missing evidence, and an empty source list.
+- Updated the response renderer to show a degradation warning and the returned structured Jira
+  evidence together. Error responses without structured evidence retain the existing one-line view.
+- Added backend regression coverage for `Help me understand PROJ-1003` with malformed LLM output,
+  plus structured not-found assertions, and added a frontend renderer regression test.
+
+Files changed:
+
+- `knowledge-agent/src/agent/agent.py`
+- `knowledge-agent/tests/test_agent.py`
+- `frontend/src/components/AgentResponseRenderer.tsx`
+- `frontend/src/__tests__/AgentResponseRenderer.test.tsx`
+- `docs/PROJECT_HANDOFF.md`
+
+Validation:
+
+- Knowledge Agent focused agent tests: **13 passed**.
+- Knowledge Agent full suite: **56 passed** with one third-party Python 3.14 deprecation warning.
+- Knowledge Agent Ruff: **all checks passed**.
+- Frontend Vitest/build: **not run locally** because Node/npm are unavailable in this environment.
+- Docker/EC2/live Groq validation: **not run in this local environment**.
+- Acceptance criteria: backend deterministic fallback and structured not-found behavior **passed**;
+  frontend behavior is covered by a new test but awaits execution in a Node 22 environment.
+
+Security and repository state:
+
+- No provider exception text, credentials, runtime telemetry, or unverified Jira evidence is added
+  to the response.
+- No API key or environment file was added.
+- Branch: `main`; implementation base HEAD: `dafb83db3a793eecbf06a6811ac6a62004b7e168`.
+- Changes remain uncommitted and unpushed pending user authorization.
 - Phase 5 remains the next phase and was not started.

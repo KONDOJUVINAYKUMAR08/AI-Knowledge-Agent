@@ -6,28 +6,28 @@ interface Props {
 }
 
 export function AgentResponseRenderer({ response }: Props) {
-  if (!response.success) {
-    return (
-      <div className="error-message">
-        <span>⚠️</span>
-        <span>{response.error ?? 'An unexpected error occurred.'}</span>
-      </div>
-    )
-  }
-
   const { structured_response } = response
 
   if (!structured_response) {
+    const message = !response.success
+      ? response.error ?? 'An unexpected error occurred.'
+      : 'No structured response was returned from the agent.'
     return (
       <div className="error-message">
         <span>⚠️</span>
-        <span>No structured response was returned from the agent.</span>
+        <span>{message}</span>
       </div>
     )
   }
 
   return (
     <div className="structured-response-container" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {!response.success && (
+        <div className="error-message" role="alert">
+          <span>⚠️</span>
+          <span>{response.error ?? 'The request completed with limited results.'}</span>
+        </div>
+      )}
       
       {/* Summary Section */}
       <div className="result-card">

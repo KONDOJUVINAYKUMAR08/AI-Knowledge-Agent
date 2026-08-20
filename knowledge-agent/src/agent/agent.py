@@ -207,7 +207,12 @@ class KnowledgeAgent:
     async def _node_generate_response(self, state: AgentState) -> dict[str, Any]:
         if state.get("error_code"):
             message = state.get("error_message") or "The Knowledge Agent could not complete the request."
-            return {"structured_response": self._error_response(message)}
+            return {
+                "structured_response": self._error_response(
+                    message,
+                    ticket_key=state.get("ticket_key"),
+                )
+            }
 
         intent = state.get("intent")
         if intent == "capabilities":
@@ -246,7 +251,11 @@ class KnowledgeAgent:
                 return {
                     "error_code": exc.code,
                     "error_message": exc.user_message,
-                    "structured_response": self._error_response(exc.user_message),
+                    "structured_response": self._investigation_fallback_response(
+                        state.get("ticket_data") or {},
+                        state.get("similar_matches") or [],
+                        exc.code,
+                    ),
                 }
 
         message = "The Knowledge Agent could not classify this request."
@@ -271,7 +280,9 @@ class KnowledgeAgent:
                 "previous_resolution sections must cite retrieved historical tickets. The "
                 "recommended_investigation section must clearly label recommendations and must not "
                 "present them as completed actions. State unavailable evidence in missing_information. "
-                "Every source must be a supplied Jira key."
+                "Every source must be a supplied Jira key. The sources list must include the current "
+                "ticket key and, when historical matches are supplied, the first (highest-ranked) "
+                "historical ticket key. Do not mention or cite any Jira key absent from the supplied evidence."
             )
         )
         evidence = json.dumps(
@@ -324,9 +335,16 @@ class KnowledgeAgent:
                 await asyncio.sleep(delay)
 
         messages_by_category = {
-            "llm_timeout": "The Knowledge Agent timed out while generating the analysis. Please try again.",
-            "llm_invalid_response": "The Knowledge Agent returned an invalid structured response. Please try again.",
-            "llm_provider_unavailable": "The Knowledge Agent is temporarily unavailable. Please try again.",
+            "llm_timeout": (
+                "AI analysis timed out. Verified Jira evidence is shown below."
+            ),
+            "llm_invalid_response": (
+                "AI-generated analysis did not pass response validation. "
+                "Verified Jira evidence is shown below."
+            ),
+            "llm_provider_unavailable": (
+                "AI analysis is temporarily unavailable. Verified Jira evidence is shown below."
+            ),
         }
         raise LLMGenerationError(last_category, messages_by_category[last_category])
 
@@ -489,15 +507,87 @@ class KnowledgeAgent:
             sources=[],
         ).model_dump()
 
-    @staticmethod
-    def _error_response(message: str) -> dict[str, Any]:
+    @classmethod
+    def _investigation_fallback_response(
+        cls,
+        ticket: dict[str, Any],
+        similar_matches: list[dict[str, Any]],
+        failure_code: str,
+    ) -> dict[str, Any]:
+        """Return verified Jira evidence when AI synthesis cannot be accepted."""
+        ticket_key = str(ticket.get("key") or "the requested ticket")
+        ticket_response = AgentResponseSchema.model_validate(cls._ticket_response(ticket))
+        similarity_response = AgentResponseSchema.model_validate(
+            cls._similarity_response(ticket_key, similar_matches)
+        )
+        failure_explanations = {
+            "llm_timeout": "AI synthesis timed out before a validated analysis was produced.",
+            "llm_invalid_response": (
+                "AI synthesis was rejected because it did not satisfy the required response "
+                "schema or Jira-source grounding checks."
+            ),
+            "llm_provider_unavailable": (
+                "AI synthesis could not be completed because the configured provider was unavailable."
+            ),
+        }
+        missing_details = [
+            failure_explanations.get(
+                failure_code,
+                "AI synthesis could not be completed or validated.",
+            ),
+            "Current runtime logs, metrics, traces, and configuration were not supplied to this system.",
+        ]
+        if not ticket.get("root_cause"):
+            missing_details.append("The current ticket does not contain a confirmed root cause.")
+        if not ticket.get("resolution"):
+            missing_details.append("The current ticket does not contain a recorded resolution.")
+
+        sources = list(
+            dict.fromkeys([*ticket_response.sources, *similarity_response.sources])
+        )
         return AgentResponseSchema(
-            ticket_summary="Unable to complete the request",
-            what_we_know=message,
-            similar_historical_tickets="No historical incidents were retrieved.",
-            previous_resolution="No historical resolution was retrieved.",
-            recommended_investigation="Review the request and try again.",
-            missing_information="Valid Jira evidence was not available for this request.",
+            ticket_summary=ticket_response.ticket_summary,
+            what_we_know=ticket_response.what_we_know,
+            similar_historical_tickets=similarity_response.similar_historical_tickets,
+            previous_resolution=similarity_response.previous_resolution,
+            recommended_investigation=(
+                "**Recommended:** Review the verified Jira facts above, validate current logs, "
+                "metrics, traces, configuration, and resource state, and confirm that the current "
+                "failure conditions match a historical incident before reusing its resolution."
+            ),
+            missing_information="\n".join(f"- {detail}" for detail in missing_details),
+            sources=sources,
+        ).model_dump()
+
+    @staticmethod
+    def _error_response(
+        message: str,
+        *,
+        ticket_key: str | None = None,
+    ) -> dict[str, Any]:
+        summary = (
+            f"Unable to retrieve Jira ticket {ticket_key}"
+            if ticket_key
+            else "Unable to complete the request"
+        )
+        return AgentResponseSchema(
+            ticket_summary=summary,
+            what_we_know=f"The operation did not complete successfully: {message}",
+            similar_historical_tickets=(
+                "Historical similarity analysis was not performed because the requested Jira "
+                "evidence could not be retrieved."
+            ),
+            previous_resolution=(
+                "No verified historical resolution is available for this unsuccessful request."
+            ),
+            recommended_investigation=(
+                "**Recommended:** Verify the Jira ticket key and request format, confirm that the "
+                "knowledge service is available, and retry the request."
+            ),
+            missing_information=(
+                "Ticket facts, comments, history, runtime telemetry, and historical comparison "
+                "evidence could not be retrieved because the Jira operation did not complete."
+            ),
             sources=[],
         ).model_dump()
 

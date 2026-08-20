@@ -37,6 +37,34 @@ describe('AgentResponseRenderer', () => {
     expect(screen.getByText('No structured response was returned from the agent.')).toBeDefined()
   })
 
+  it('renders structured Jira evidence when AI generation is degraded', () => {
+    const degradedResponse: AgentQueryResponse = {
+      success: false,
+      error_code: 'llm_invalid_response',
+      error: 'AI-generated analysis did not pass response validation. Verified Jira evidence is shown below.',
+      structured_response: {
+        ticket_summary: 'Verified Jira ticket PROJ-1003',
+        what_we_know: 'Verified AKS DNS incident facts',
+        similar_historical_tickets: 'PROJ-904 is a retrieved historical incident.',
+        previous_resolution: 'Restored the required network configuration.',
+        recommended_investigation: 'Validate current DNS and network evidence.',
+        missing_information: 'Current runtime telemetry was not supplied.',
+        sources: ['PROJ-1003', 'PROJ-904']
+      },
+      timestamp: '2026-08-12T12:00:00Z',
+      processing_ms: 100,
+      request_id: 'request-degraded'
+    }
+
+    render(<AgentResponseRenderer response={degradedResponse} />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Verified Jira evidence is shown below.')
+    expect(screen.getByText('Verified Jira ticket PROJ-1003')).toBeDefined()
+    expect(screen.getByText('Verified AKS DNS incident facts')).toBeDefined()
+    expect(screen.getByText('PROJ-1003')).toBeDefined()
+    expect(screen.getByText('PROJ-904')).toBeDefined()
+  })
+
   it('renders full structured response correctly', () => {
     const fullResponse: AgentQueryResponse = {
       success: true,

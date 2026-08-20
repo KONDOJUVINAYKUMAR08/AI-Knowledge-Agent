@@ -191,6 +191,9 @@ async def test_ticket_not_found_is_clean(agent, mock_mcp_client):
     assert result["success"] is False
     assert result["error_code"] == "ticket_not_found"
     assert result["error"] == "Jira ticket PROJ-9999 was not found."
+    assert "PROJ-9999" in result["structured_response"]["ticket_summary"]
+    assert "could not be retrieved" in result["structured_response"]["missing_information"]
+    assert result["structured_response"]["sources"] == []
     assert "Traceback" not in str(result)
 
 
@@ -228,17 +231,42 @@ async def test_provider_failure_is_safe_and_unsuccessful(
 
 @pytest.mark.asyncio
 async def test_malformed_llm_output_is_safe(agent, mock_mcp_client, structured_llm):
+    ticket = {
+        **_ticket("PROJ-1003"),
+        "summary": "AKS workloads failed DNS lookup for internal identity endpoint",
+        "service": "identity-service",
+        "platform": "Azure AKS",
+        "cluster": "aks-prod-identity",
+        "symptoms": ["DNS lookup timeout", "authentication failure"],
+    }
+    historical_match = {
+        **_similar_match(),
+        "ticket": {
+            **_ticket("PROJ-904"),
+            "summary": "AKS network policy blocked inventory service egress",
+            "service": "inventory-service",
+            "platform": "Azure AKS",
+            "cluster": "aks-prod-commerce",
+        },
+        "similarity_score": 48,
+        "previous_resolution": "Restored the required network policy selector.",
+    }
     mock_mcp_client.call_tool.side_effect = [
-        {"success": True, "ticket": _ticket()},
-        {"success": True, "matches": [_similar_match()]},
+        {"success": True, "ticket": ticket},
+        {"success": True, "matches": [historical_match]},
     ]
     structured_llm.ainvoke.return_value = {"ticket_summary": "Incomplete"}
 
-    result = await agent.process_query("Help me understand PROJ-1002")
+    result = await agent.process_query("Help me understand PROJ-1003")
 
     assert result["success"] is False
     assert result["error_code"] == "llm_invalid_response"
-    assert "invalid structured response" in result["error"]
+    assert "did not pass response validation" in result["error"]
+    assert "PROJ-1003" in result["structured_response"]["ticket_summary"]
+    assert "Azure AKS" in result["structured_response"]["what_we_know"]
+    assert "PROJ-904" in result["structured_response"]["similar_historical_tickets"]
+    assert "Restored the required network policy selector" in result["structured_response"]["previous_resolution"]
+    assert result["structured_response"]["sources"] == ["PROJ-1003", "PROJ-904"]
 
 
 @pytest.mark.asyncio
